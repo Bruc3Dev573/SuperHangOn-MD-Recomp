@@ -53,8 +53,9 @@ So I wanted to give one of my favourite games the treatment it deserves.
 
 For a 120 Hz display or compatible switcher, choose `GAME FPS: 120` in the
 settings menu or run `./shangon --fps-limit 120`. `--120hz` remains an alias
-that also requests V-SYNC. This runs the full emulated machine at 120 Hz and
-resamples audio to the selected cadence; it does not duplicate a 60 Hz frame.
+that also requests V-SYNC. This runs the game and VDP at 120 Hz while keeping
+the original sound-driver clock at 60 Hz, then resamples audio to the device;
+it does not duplicate a 60 Hz frame.
 
 The ROM is not included and never will be. The release contains no game code
 either: at the first start it is translated from your ROM and kept in

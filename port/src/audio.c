@@ -28,6 +28,10 @@
 void (*audio_ym_log)(unsigned port, unsigned value);
 void (*audio_psg_log)(unsigned value);
 static int64_t audio_time, z80_time, ym_time, psg_time;
+static int audio_game_divider = 1;
+static int audio_vint_phase;
+static int audio_int_active;
+/* The game can tick at 120 Hz, but the sound driver remains a 60 Hz device. */
 
 static z80_t z80;
 static uint64_t z80_pins;
@@ -251,6 +255,8 @@ void audio_init(void)
   OPN2_SetChipType(ym3438_mode_ym2612);
   z80_pins = z80_init(&z80);
   z80_int = 0;
+  audio_vint_phase = 0;
+  audio_int_active = 0;
   zbank = 0;
   OPN2_Reset(&ym);
   psg_reset();
@@ -260,9 +266,18 @@ void audio_init(void)
   out_head = out_count = 0;
 }
 
+void audio_set_game_fps(int fps)
+{
+  audio_game_divider = fps == 120 ? 2 : 1;
+  audio_vint_phase = 0;
+  audio_int_active = 0;
+  z80_int = 0;
+}
+
 void audio_run(uint32_t mcycles)
 {
-  int64_t t = audio_time + mcycles;
+  uint32_t cycles = audio_game_divider == 2 ? mcycles / 2 : mcycles;
+  int64_t t = audio_time + cycles;
   z80_run_to(t);
   ym_run_to(t);
   audio_time = t;
@@ -270,7 +285,15 @@ void audio_run(uint32_t mcycles)
 
 void audio_set_z80_int(int asserted)
 {
-  z80_int = asserted;
+  if (!asserted) {
+    if (audio_int_active)
+      z80_int = 0;
+    audio_int_active = 0;
+    return;
+  }
+  int pulse = audio_game_divider == 1 || !(audio_vint_phase++ & 1);
+  audio_int_active = pulse;
+  z80_int = pulse;
 }
 
 void audio_z80_reset(void)
@@ -312,6 +335,8 @@ void audio_state(StateIO *io)
   STATE_VAR(io, z80);
   STATE_VAR(io, z80_pins);
   STATE_VAR(io, z80_int);
+  STATE_VAR(io, audio_vint_phase);
+  STATE_VAR(io, audio_int_active);
   STATE_VAR(io, zbank);
   STATE_VAR(io, ym);
   STATE_VAR(io, psg);

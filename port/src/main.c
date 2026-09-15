@@ -20,10 +20,10 @@
  * The recompiled game runs from the reset vector (rt_start); at every
  * selected game frame the runtime calls on_frame(), which renders the VDP
  * state, presents it, queues that frame's sound and polls input. Native and
- * browser builds run the emulated machine at the selected 60/120 frames per
- * second. The sound is resampled from the native YM2612 rate to the device
- * rate; the ratio follows the device queue level so sound and video, driven
- * by different clocks, stay in step without gaps or growing latency.
+ * browser builds run the game and VDP at the selected 60/120 frames per
+ * second. The sound hardware and Z80 driver stay on the original 60 Hz wall
+ * clock; its native YM2612 rate is resampled to the device rate, with the
+ * ratio following the device queue level so sound and video stay in step.
  *
  * Controls are configured in controls.ini (written with the defaults on the
  * first run). Controller axes provide analog throttle, brake and steering;
@@ -149,7 +149,8 @@ static void set_audio_rate(void)
 {
   if (!audio_rate)
     return;
-  double in_per_second = (double)(MD_MCYCLES_PER_LINE * MD_LINES_PER_FRAME) / 1008.0 * game_fps;
+  /* The sound hardware keeps its original 60 Hz wall clock. */
+  double in_per_second = (double)(MD_MCYCLES_PER_LINE * MD_LINES_PER_FRAME) / 1008.0 * GAME_FPS_60;
   audio_step = in_per_second / audio_rate;
   resample_init(&resampler, in_per_second, audio_rate);
 }
@@ -162,6 +163,7 @@ static void apply_fps_limit(void)
   next_frame = 0;
 #endif
   rt_set_fps(game_fps);
+  audio_set_game_fps(game_fps);
   if (audio_dev) {
     SDL_ClearQueuedAudio(audio_dev);
     audio_level = -1;

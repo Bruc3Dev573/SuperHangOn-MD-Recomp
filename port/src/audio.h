@@ -13,9 +13,11 @@
 #define AUDIO_NATIVE_RATE ((double)MD_MASTER_CLOCK / 1008.0)   /* YM2612 sample rate, ~53267 Hz */
 #define AUDIO_MUSIC_TRACK_COUNT 4
 
-
 void audio_init(void);
-/* advance Z80, YM2612 and PSG by `mcycles` master-clock cycles */
+/* keep the sound hardware and driver on a 60 Hz wall clock when the game
+ * simulation is running at 120 Hz */
+void audio_set_game_fps(int fps);
+/* advance sound hardware for this game's frame-clock interval */
 void audio_run(uint32_t mcycles);
 /* Z80 /INT line (asserted by the VDP at vertical blank) */
 void audio_set_z80_int(int asserted);
