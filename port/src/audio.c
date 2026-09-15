@@ -305,6 +305,14 @@ void audio_z80_reset(void)
   fm_acc[0] = fm_acc[1] = 0;
 }
 
+void audio_mute_psg(void)
+{
+  md_psg_write(0x9f);
+  md_psg_write(0xbf);
+  md_psg_write(0xdf);
+  md_psg_write(0xff);
+}
+
 void audio_play_music(int track)
 {
   static const uint8_t sound_id[AUDIO_MUSIC_TRACK_COUNT] = {0x82, 0x84, 0x83, 0x85};

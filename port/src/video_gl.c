@@ -5,8 +5,8 @@
  * Passes: game frame -> [CRT shader into an offscreen target at the chosen
  * processing resolution] -> window, then the UI layer with alpha blending.
  * Wide screen formats: the race picture is first composed at 224 lines from
- * the rebuilt scene (layers, road quads, sprite images) and then treated as
- * the game frame; other frames are drawn 4:3 in the middle.
+ * the rebuilt scene (layers, road quads, sprite images). Frames without a
+ * scene are scaled to the selected screen format.
  */
 #include <stdio.h>
 #include <string.h>
@@ -726,8 +726,8 @@ void video_present(const uint32_t *frame, int w, int h, int stride, const VideoS
   int rx, ry, rw, rh;
   picture_rect(dw, dh, ext ? pic_w : w, h, s, &rx, &ry, &rw, &rh);
 
-  /* the source: the wide picture (composed now, or the last one again) or
-   * the game frame, which a wide picture shows in its middle columns */
+  /* source: the current frame, or a wide picture composed now or reused from
+   * the previous race frame */
   GLuint src = tex_game;
   int src_w = w;
   if (ext && wide && wide->scene && wide->scene->ext == ext) {
@@ -738,8 +738,6 @@ void video_present(const uint32_t *frame, int w, int h, int stride, const VideoS
     src = tex_scene;
     src_w = pic_w;
   }
-  int middle = ext && src == tex_game;
-
   if (s->crt != CRT_OFF && s->render_height > 0 && s->render_height != rh) {
     /* CRT processing at the chosen resolution, then scaled to the window */
     int th = s->render_height, tw = (int)((double)rw * th / rh + 0.5);
@@ -756,19 +754,12 @@ void video_present(const uint32_t *frame, int w, int h, int stride, const VideoS
     }
     VideoSettings inner = *s;
     inner.scale_mode = SCALE_STRETCH;
-    if (middle)
-      draw_crt(fbo, tw, th, (int)((double)tw * ext / pic_w + 0.5), 0, (int)((double)tw * 320 / pic_w + 0.5), th,
-               src, src_w, h, &inner);
-    else
-      draw_crt(fbo, tw, th, 0, 0, tw, th, src, src_w, h, &inner);
+    draw_crt(fbo, tw, th, 0, 0, tw, th, src, src_w, h, &inner);
     gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
     gl.Viewport(0, 0, dw, dh);
     gl.ClearColor(0, 0, 0, 1);
     gl.Clear(GL_COLOR_BUFFER_BIT);
     blit(tex_fbo, GL_LINEAR, rx, ry, rw, rh, 0);
-  } else if (middle) {
-    draw_crt(0, dw, dh, rx + (int)((double)rw * ext / pic_w + 0.5), ry, (int)((double)rw * 320 / pic_w + 0.5), rh,
-             src, src_w, h, s);
   } else {
     draw_crt(0, dw, dh, rx, ry, rw, rh, src, src_w, h, s);
   }
@@ -786,7 +777,7 @@ void video_present(const uint32_t *frame, int w, int h, int stride, const VideoS
                      pixel_data(ui, (size_t)ui_w * ui_h));
     gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
     gl.Viewport(0, 0, dw, dh);
-    /* over the 4:3 part of a wide picture */
+    /* keep the external HUD at the game's original width */
     int ux = rx + (int)((double)rw * ext / pic_w + 0.5), uw = (int)((double)rw * 320 / pic_w + 0.5);
     blit(tex_ui, GL_NEAREST, ux, ry + rh, uw, -rh, 1);
   }

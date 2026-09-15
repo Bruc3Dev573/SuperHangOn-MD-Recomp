@@ -23,6 +23,8 @@ void audio_run(uint32_t mcycles);
 void audio_set_z80_int(int asserted);
 /* Z80 reset line asserted by the 68000: resets the Z80 and the YM2612 */
 void audio_z80_reset(void);
+/* silence active PSG voices; subsequent game writes restore them */
+void audio_mute_psg(void);
 /* starts one of the four original music tracks (1..4 in the menu) */
 void audio_play_music(int track);
 /* master-clock time of the sound hardware since power on */

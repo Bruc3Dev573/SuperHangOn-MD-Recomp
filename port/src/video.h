@@ -27,7 +27,7 @@ typedef struct {
   float vignette;           /* 0..1 */
   float sharpness;          /* 0 soft .. 1 sharp (horizontal) */
   float brightness;         /* 0.5..2, compensates the mask */
-  int screen_format;        /* FORMAT_*: wide formats extend the race picture to the sides */
+  int screen_format;        /* FORMAT_*: selected output aspect */
 } VideoSettings;
 
 /* a wide race picture: the scene and the layers of render_frame_wide()
@@ -48,9 +48,8 @@ int video_init(SDL_Window *window, int vsync);
 void video_shutdown(void);
 
 /* draws the game frame (0x00RRGGBB pixels, `stride` pixels per row) with the
- * settings, then the UI layer (RGBA, may be NULL), and presents. In a wide
- * screen format the wide picture is shown when given (NULL: the frame in the
- * middle with black bars) */
+ * settings, then the UI layer (RGBA, may be NULL), and presents. A wide race
+ * picture is shown when given; frames without one fill the selected format. */
 void video_present(const uint32_t *frame, int w, int h, int stride, const VideoSettings *s,
                    const VideoWide *wide, const uint32_t *ui, int ui_w, int ui_h);
 

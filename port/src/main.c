@@ -39,6 +39,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <SDL.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 #include "recomp_rt.h"
 #include "scene.h"
 #include "md.h"
@@ -84,7 +87,17 @@ static Resampler resampler;
 static double audio_step;             /* nominal input frames per output frame */
 static double audio_level = -1;
 static Uint64 start_time;
+#ifdef __EMSCRIPTEN__
+static void browser_audio_gesture(void);
+static int browser_audio_event(const SDL_Event *e)
+{
+  return e->type == SDL_KEYDOWN || e->type == SDL_MOUSEBUTTONDOWN ||
+         e->type == SDL_FINGERDOWN || e->type == SDL_CONTROLLERBUTTONDOWN ||
+         e->type == SDL_JOYBUTTONDOWN;
+}
+#endif
 
+#define GAME_MODE_RANKING 0x21
 #define SCRIPT_SAVE 0x100
 #define SCRIPT_LOAD 0x200
 #define SCRIPT_REWIND 0x400
@@ -224,6 +237,10 @@ static void poll_events(void)
     if (e.type == SDL_QUIT)
       exit(0);
     input_event(&e);
+#ifdef __EMSCRIPTEN__
+    if (browser_audio_event(&e))
+      browser_audio_gesture();
+#endif
   }
   if (input_hotkey_pressed(HOTKEY_MENU) | input_hotkey_pressed(HOTKEY_QUIT))
     menu_request = 1;
@@ -274,7 +291,7 @@ static void present(void)
     settings.video.render_height = render_heights[settings.render_index];
     VideoWide wide = {scene_valid ? &scene : NULL, render_wide_back[0], render_wide_plane_lo[0], render_wide_plane_hi[0]};
     /* a race frame the scene could not be built for shows the last wide
-     * picture again; others are 4:3 */
+     * picture again; every frame uses the selected screen format. */
     int shown = scene_valid || scene_age <= 3;
     video_present(render_frame_rgb[0], w, MD_MAX_H, MD_MAX_W, &settings.video, shown ? &wide : NULL,
                   ui_canvas[0], UI_W, UI_H);
@@ -337,6 +354,31 @@ static void open_audio(void)
   audio_rate = have.freq;
   set_audio_rate();
   SDL_PauseAudioDevice(audio_dev, 0);
+}
+#ifdef __EMSCRIPTEN__
+EM_JS(void, browser_audio_resume, (), {
+  if (typeof Module !== "undefined" && Module.SDL2 && Module.SDL2.audioContext)
+    Module.SDL2.audioContext.resume();
+});
+
+static void browser_audio_gesture(void)
+{
+  if (audio_dev) {
+    SDL_PauseAudioDevice(audio_dev, 0);
+    browser_audio_resume();
+  }
+}
+#endif
+
+static void silence_ranking_audio(void)
+{
+  /* Ranking disables the game's sound command path but leaves PSG voices
+   * running; clear both the chip voices and samples already queued. */
+  audio_mute_psg();
+  if (audio_dev) {
+    SDL_ClearQueuedAudio(audio_dev);
+    audio_level = -1;
+  }
 }
 
 static void queue_audio(void)
@@ -499,6 +541,10 @@ static int browser_menu_tick(void)
       exit(0);
     }
     input_event(&e);
+#ifdef __EMSCRIPTEN__
+    if (browser_audio_event(&e))
+      browser_audio_gesture();
+#endif
   }
   int apply = 0;
   int back = input_hotkey_pressed(HOTKEY_MENU) | input_hotkey_pressed(HOTKEY_QUIT);
@@ -567,6 +613,9 @@ static void on_frame(M68K *c)
       write_shot(cap, cw, ch, cw);
   }
   queue_audio();
+  uint16_t mode = ((unsigned)md.ram[0xc704] << 8) | md.ram[0xc705];
+  if (mode == GAME_MODE_RANKING)
+    silence_ranking_audio();
 #ifndef __EMSCRIPTEN__
   if (pace_game)
     pace();

@@ -5,7 +5,7 @@
 #include "state.h"
 #include "recomp_rt.h"
 #include "md.h"
-
+#include "scene.h"
 #define REWIND_FRAMES (60 * 20)
 #define REWIND_BYTES ((size_t)96 << 20)
 
@@ -199,6 +199,7 @@ static void after_load(M68K *c)
     records_copy(1);
   memcpy(cur, next, state_size);
   have_cur = 1;
+  scene_frame_end();
   rt_resume_at(c, c->pc);
 }
 
@@ -219,6 +220,7 @@ void persist_frame_end(M68K *c, int save, int load, int rewind)
       records_applied = 0;                          /* loaded again once the game has initialised */
       memcpy(cur, boot, state_size);
       have_cur = 1;
+      scene_frame_end();
       rt_resume_at(c, c->pc);                       /* does not return */
     }
   }
