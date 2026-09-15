@@ -88,6 +88,7 @@ created on the first run.
 - macOS release
 - 120 fps
 - More responsive bike handling
+- Analog controls for throttle, brake and steering
 - Sound in the demo mode
 - In-game music selection
 
