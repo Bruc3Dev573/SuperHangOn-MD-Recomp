@@ -23,6 +23,11 @@
 #define HANG_GUARD_CYCLES (128000u * 8)     /* 8 frames of 68000 time without waiting */
 
 uint32_t rt_cycles;
+int rt_rate = 1;
+/* RAM byte the 120 Hz race tick wait sets while it waits (patches/pc60) */
+#define FAST_VBLANK_FLAG 0xffc626
+static uint32_t frame_no;
+static int32_t after_vblank = 1;      /* the previous frame ended with the game's VBlank */
 void (*rt_frame_callback)(M68K *c);
 void (*rt_frame_end_callback)(M68K *c, uint32_t resume_pc);
 
@@ -111,8 +116,24 @@ static int hblank_installed(void)
 
 static void frame(M68K *c, uint32_t resume_pc)
 {
-  /* active display */
+  /* at 120 frames per second a frame is half the hardware time: the sound
+   * chips run half as long and their interrupt comes every second frame; the
+   * game's VBlank comes every frame only while the race waits for its next
+   * tick, else every second frame (menus keep their 60 Hz timing) */
+  uint32_t line_mcycles = MD_MCYCLES_PER_LINE / (uint32_t)rt_rate;
+  int tick60 = frame_no++ % (uint32_t)rt_rate == 0;
+  int vblank = tick60 || m68k_read8(FAST_VBLANK_FLAG);
+  /* active display: after a frame without the game's VBlank (120 frames per
+   * second outside the race ticks) the picture of the previous frame is shown
+   * again, as its line scroll comes from tables the VBlank resets */
   vdp.status &= ~0x0008;
+  if (!after_vblank) {
+    for (int line = 0; line < 224; line++) {
+      vdp.line = line;
+      audio_run(line_mcycles);
+    }
+    goto active_done;
+  }
   int counter = vdp.reg[10];
   /* the line interrupt counter also runs on the pre-render line, so the first
    * HBlank effect happens before line 0 (matches Genesis Plus GX) */
@@ -130,16 +151,18 @@ static void frame(M68K *c, uint32_t resume_pc)
       if ((vdp.reg[0] & 0x10) && c->imask < 4 && hblank_installed())
         hblank_effect(c, line);
     }
-    audio_run(MD_MCYCLES_PER_LINE);
+    audio_run(line_mcycles);
   }
+active_done:
   if (rt_frame_callback)
     rt_frame_callback(c);
 
   /* vertical blank */
   vdp.line = 224;
-  vdp.status |= 0x0088;
-  audio_set_z80_int(1);
-  if (vdp.reg[1] & 0x20) {
+  vdp.status |= vblank ? 0x0088 : 0x0008;
+  after_vblank = vblank;
+  audio_set_z80_int(tick60);
+  if (vblank && (vdp.reg[1] & 0x20)) {
     if (c->imask < 6) {
       vint_pending = 0;
       vdp.status &= ~0x0080;
@@ -148,11 +171,11 @@ static void frame(M68K *c, uint32_t resume_pc)
       vint_pending = 1;
     }
   }
-  audio_run(MD_MCYCLES_PER_LINE);                 /* the Z80 interrupt lasts one line */
+  audio_run(line_mcycles);                        /* the Z80 interrupt lasts one line */
   audio_set_z80_int(0);
   for (unsigned line = 225; line < MD_LINES_PER_FRAME; line++) {
     vdp.line = (int)line;
-    audio_run(MD_MCYCLES_PER_LINE);
+    audio_run(line_mcycles);
   }
   vdp.line = 0;
   rt_cycles = 0;
@@ -173,6 +196,8 @@ void rt_state(StateIO *io, M68K *c)
   STATE_VAR(io, *c);
   STATE_VAR(io, vint_pending);
   STATE_VAR(io, rt_cycles);
+  STATE_VAR(io, frame_no);
+  STATE_VAR(io, after_vblank);
 }
 
 void rt_wait_point(M68K *c, uint32_t addr)
@@ -199,7 +224,7 @@ void rt_start(M68K *c)
       vint_pending = 0;
       run_interrupt(c, 6, pc);
     }
-    if (rt_cycles > HANG_GUARD_CYCLES)
+    if (rt_cycles > HANG_GUARD_CYCLES / (uint32_t)rt_rate)
       frame(c, pc);
   }
 }

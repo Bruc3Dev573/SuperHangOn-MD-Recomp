@@ -28,6 +28,7 @@ void settings_default(AppSettings *s)
   s->vsync = VSYNC_AUTO;
   s->show_fps = 1;
   s->volume = 100;
+  s->frame_rate = 60;
 }
 
 /* key = value lines; unknown keys are ignored */
@@ -41,6 +42,7 @@ INT_FIELD(render, render_index)
 INT_FIELD(vsync, vsync)
 INT_FIELD(fps, show_fps)
 INT_FIELD(volume, volume)
+INT_FIELD(rate, frame_rate)
 INT_FIELD(scale, video.scale_mode)
 INT_FIELD(aspect, video.aspect_43)
 INT_FIELD(crt, video.crt)
@@ -56,7 +58,7 @@ FLT_FIELD(brightness, video.brightness)
 
 static const Entry entries[] = {
   {"fullscreen", 0, f_fullscreen}, {"window_preset", 0, f_window}, {"render_resolution", 0, f_render},
-  {"vsync", 0, f_vsync}, {"show_fps", 0, f_fps}, {"volume", 0, f_volume},
+  {"vsync", 0, f_vsync}, {"show_fps", 0, f_fps}, {"volume", 0, f_volume}, {"frame_rate", 0, f_rate},
   {"screen_format", 0, f_format}, {"scaling", 0, f_scale}, {"aspect_4_3", 0, f_aspect}, {"crt_filter", 0, f_crt}, {"crt_mask_tvl", 0, f_tvl},
   {"crt_scanlines", 1, f_scanlines}, {"crt_mask", 1, f_mask}, {"crt_glow", 1, f_glow},
   {"crt_curvature", 1, f_curvature}, {"crt_vignette", 1, f_vignette}, {"crt_sharpness", 1, f_sharpness},
@@ -88,6 +90,8 @@ void settings_load(AppSettings *s, const char *path)
   s->render_index = clampi(s->render_index, 0, render_height_count - 1);
   s->vsync = clampi(s->vsync, 0, VSYNC_COUNT - 1);
   s->volume = clampi(s->volume, 0, 100);
+  if (s->frame_rate != 120)
+    s->frame_rate = 60;
   s->video.scale_mode = clampi(s->video.scale_mode, 0, SCALE_COUNT - 1);
   s->video.crt = clampi(s->video.crt, 0, CRT_COUNT - 1);
   s->video.screen_format = clampi(s->video.screen_format, 0, FORMAT_COUNT - 1);

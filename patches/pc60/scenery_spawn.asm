@@ -1,10 +1,10 @@
 ; insert $161AA
 ; ---------------------------------------------------------------------------
-; 60 Hz roadside scenery spawning (sub_004512): the spawn pattern advances on
-; every second tick, keeping the original object density along the road
+; high rate roadside scenery spawning (sub_004512): the spawn pattern advances on
+; once every TickCount ticks, keeping the original object density along the road
 ; ---------------------------------------------------------------------------
 Scenery60Spawn:
-	tst.b	(Tick60Odd).w
+	tst.b	(TickStep).w
 	beq.s	.skip
 	tst.w	($c,a5)
 	beq.s	.skip
@@ -12,9 +12,9 @@ Scenery60Spawn:
 .skip:
 	jmp	(loc_0045D2).l
 
-; road palette flash: its countdown steps on every second tick
+; road palette flash: its countdown steps once every TickCount ticks
 Flash60Countdown:
-	tst.b	(Tick60Odd).w
+	tst.b	(TickStep).w
 	beq.s	.keep
 	subq.b	#1,($1b,a0)
 	bne.s	.keep
@@ -22,20 +22,20 @@ Flash60Countdown:
 .keep:
 	jmp	(loc_00A3BC).l
 
-; engine sound ducking after overtaking ($FFC826): one step every second tick
+; engine sound ducking after overtaking ($FFC826): one step once every TickCount ticks
 Duck60Timer:
 	tst.w	($ffffc826).w
 	beq.s	.done
-	tst.b	(Tick60Odd).w
+	tst.b	(TickStep).w
 	beq.s	.done
 	subq.w	#1,($ffffc826).w
 .done:
 	jmp	(loc_008B6A).l
 
-; hit test against roadside objects: counted on every second tick, so fast
+; hit test against roadside objects: counted once every TickCount ticks, so fast
 ; objects are sampled at the same positions as in the 30 Hz game
 Hit60Scenery:
-	tst.b	(Tick60Odd).w
+	tst.b	(TickStep).w
 	beq.s	.done
 	addq.w	#1,($ff0656).l
 .done:

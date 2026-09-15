@@ -1,6 +1,7 @@
 ; insert $161AA
 ; ---------------------------------------------------------------------------
-; 60 Hz score: the per-tick points (BCD, from the speed table) are halved
+; high rate score: the per-tick points (BCD, from the speed table) are divided
+; by TickCount
 ; ---------------------------------------------------------------------------
 Score60Half:
 	movem.l	d0/d2-d3,-(sp)
@@ -14,11 +15,12 @@ Score60Half:
 	andi.w	#$f,d2
 	add.w	d2,d0
 	dbf	d3,.tobin
-	; half, rounded down on even ticks and up on odd ones
+	; divided by TickCount with the tick phase added: TickCount ticks give
+	; the original points
 	moveq	#0,d2
 	move.b	(Tick60Odd).w,d2
 	add.w	d2,d0
-	lsr.w	#1,d0
+	lsr.w	#TickShift,d0
 	; binary -> BCD word
 	moveq	#0,d1
 	moveq	#3,d3

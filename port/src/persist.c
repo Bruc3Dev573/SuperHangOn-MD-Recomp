@@ -6,7 +6,7 @@
 #include "recomp_rt.h"
 #include "md.h"
 
-#define REWIND_FRAMES (60 * 20)
+#define REWIND_FRAMES (120 * 20)          /* ring capacity: 20 s at 120 frames per second */
 #define REWIND_BYTES ((size_t)96 << 20)
 
 static char dir[1024];
@@ -275,7 +275,7 @@ void persist_frame_end(M68K *c, int save, int load, int rewind)
     uint8_t *data = malloc(len);
     if (data) {
       memcpy(data, rle_scratch, len);
-      if (ring_count == REWIND_FRAMES)
+      if (ring_count >= 60 * 20 * rt_rate)             /* 20 seconds */
         ring_drop_oldest();
       ring[ring_head].data = data;
       ring[ring_head].len = len;

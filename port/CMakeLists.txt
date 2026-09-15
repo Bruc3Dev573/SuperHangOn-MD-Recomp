@@ -29,24 +29,34 @@ set(SHANGON_PATCHES "patches/pc60;patches/relax" CACHE STRING "Overlay directori
 
 # SHANGON_RUNTIME_TRANSLATION: the executable holds no game code; it decodes
 # the instructions from the ROM at start-up (src/rt_translate.c) following
-# the block structure in port/data/<overlays>/code_map.c, and applies the
-# overlays' bytes of port/data/<overlays>/rom_patch.c. These two files are
-# made from the ROM by tools/update_code_map.sh; the build needs no ROM.
-# Otherwise the game code is recompiled to C at build time (needs the ROM).
+# the block structure in port/data/SET/code_map.c, and applies the overlays'
+# bytes of port/data/SET/rom_patch.c. These files are made from the ROM by
+# tools/update_code_map.sh; the build needs no ROM. With the default overlays
+# both the 60 and the 120 ticks per second sets are built in (the settings
+# choose); without overlays the original game.
+# Otherwise the game code is recompiled to C at build time (needs the ROM),
+# at SHANGON_TICK_RATE logic ticks per second.
 option(SHANGON_RUNTIME_TRANSLATION "Translate the game code from the ROM at start-up" ON)
-string(REPLACE "patches/" "" DATA_TAG "${SHANGON_PATCHES}")
-string(REPLACE ";" "+" DATA_TAG "${DATA_TAG}")
-if(DATA_TAG STREQUAL "")
-  set(DATA_TAG original)
-endif()
-set(DATA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/data/${DATA_TAG})
+set(SHANGON_TICK_RATE 60 CACHE STRING "Recompiled build: logic ticks per second with the overlays (60 or 120)")
+set(DATA ${CMAKE_CURRENT_SOURCE_DIR}/data)
 
 if(SHANGON_RUNTIME_TRANSLATION)
-  if(NOT EXISTS ${DATA_DIR}/code_map.c)
-    message(FATAL_ERROR "no code map for the overlays ${SHANGON_PATCHES} (${DATA_DIR}); run tools/update_code_map.sh")
+  if(SHANGON_PATCHES STREQUAL "patches/pc60;patches/relax")
+    set(GAME_SOURCES src/rt_translate.c src/m68k_decode.c ${DATA}/60hz/code_map.c ${DATA}/60hz/rom_patch.c
+        ${DATA}/120hz/code_map.c ${DATA}/120hz/rom_patch.c)
+    set(GAME_DEFINES RT_TRANSLATE RT_CODE_SETS_RATES)
+  elseif(SHANGON_PATCHES STREQUAL "")
+    set(GAME_SOURCES src/rt_translate.c src/m68k_decode.c ${DATA}/original/code_map.c ${DATA}/original/rom_patch.c)
+    set(GAME_DEFINES RT_TRANSLATE RT_CODE_SET_ORIGINAL)
+  else()
+    message(FATAL_ERROR "the runtime translation build has code sets for the default overlays or none")
   endif()
-  set(GAME_SOURCES src/rt_translate.c src/m68k_decode.c ${DATA_DIR}/code_map.c ${DATA_DIR}/rom_patch.c)
 else()
+if(SHANGON_TICK_RATE EQUAL 120)
+  set(TICK_SHIFT 2)
+else()
+  set(TICK_SHIFT 1)
+endif()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 find_program(MAKE_PROGRAM make REQUIRED)
 file(GLOB RECOMP_PY CONFIGURE_DEPENDS ${ROOT}/tools/recomp/*.py ${ROOT}/tools/disasm/*.py)
@@ -59,7 +69,7 @@ string(REPLACE ";" " " PATCHES_ARG "${SHANGON_PATCHES}")
 
 add_custom_command(
   OUTPUT ${GEN_CODE} ${GEN_PATCH}
-  COMMAND ${MAKE_PROGRAM} -C ${ROOT} patched "PATCHES=${PATCHES_ARG}" NAME=port_game
+  COMMAND ${MAKE_PROGRAM} -C ${ROOT} patched "PATCHES=${PATCHES_ARG}" NAME=port_game "DEFINES=TickShift=${TICK_SHIFT}"
   COMMAND ${CMAKE_COMMAND} -E make_directory ${GEN_DIR}
   COMMAND ${Python3_EXECUTABLE} ${ROOT}/tools/recomp/recomp.py
           ${ROOT}/build/port_game.md ${ROOT}/build/port_game.lst ${GEN_CODE}
@@ -69,6 +79,11 @@ add_custom_command(
   COMMENT "Recompiling 68000 game code to C (overlays: ${SHANGON_PATCHES})"
   VERBATIM)
 set(GAME_SOURCES ${GEN_CODE} ${GEN_PATCH})
+if(TICK_SHIFT EQUAL 2 AND NOT SHANGON_PATCHES STREQUAL "")
+  set(GAME_DEFINES SHANGON_FIXED_RATE=2)
+else()
+  set(GAME_DEFINES SHANGON_FIXED_RATE=1)
+endif()
 # generated code: huge, warnings off, no per-function optimisation blow-up
 set_source_files_properties(${GEN_CODE} PROPERTIES COMPILE_OPTIONS "-w")
 endif()
@@ -101,9 +116,7 @@ if(WIN32)
 endif()
 
 add_executable(shangon src/main.c src/input.c src/persist.c src/sha1.c src/overlay.c src/png.c src/video_gl.c src/ui.c src/menu.c src/settings.c ${RUNTIME_SOURCES} ${GAME_SOURCES})
-if(SHANGON_RUNTIME_TRANSLATION)
-  target_compile_definitions(shangon PRIVATE RT_TRANSLATE)
-endif()
+target_compile_definitions(shangon PRIVATE ${GAME_DEFINES})
 target_include_directories(shangon PRIVATE src third_party/chips)
 set_target_properties(shangon PROPERTIES WIN32_EXECUTABLE TRUE)   # no console window on Windows
 target_compile_options(shangon PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall>)

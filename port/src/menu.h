@@ -11,6 +11,11 @@ enum { MENU_OPEN, MENU_CLOSED, MENU_QUIT, MENU_RESET };
 /* what a change needs from the frontend */
 enum { APPLY_WINDOW = 1, APPLY_FULLSCREEN = 2, APPLY_VSYNC = 4, APPLY_SAVE = 8 };
 
+/* frame rate: video frames per 1/60 s of the running game (menu timing), and
+ * whether the build offers the 120 frames per second choice */
+extern int menu_rate;
+extern int menu_rate_choice;
+
 void menu_open(void);
 /* one frame of the menu with the pad state (bit0 U 1 D 2 L 3 R 4 B 5 C 6 A 7 S)
  * and whether "back" was pressed; returns MENU_*; *apply collects APPLY_* */

@@ -15,7 +15,8 @@ So I wanted to give one of my favourite games the treatment it deserves.
 
 ## Features
 
-- 60 fps game logic and rendering
+- 60 fps game logic and rendering, or 120 fps (FRAME RATE in the settings
+  menu, applied at the next start)
 - Reduced input lag
 - 16:9 and 21:9 widescreen races
 - CRT filters (scanlines, aperture grille, slot mask, shadow mask) with
@@ -51,7 +52,8 @@ So I wanted to give one of my favourite games the treatment it deserves.
 
 The ROM is not included and never will be. The release contains no game code
 either: at the first start it is translated from your ROM and kept in
-`shangon.cache`, so the first start takes a moment longer. The cache,
+`shangon.cache` (`shangon120.cache` at 120 fps), so the first start takes a
+moment longer. The cache,
 settings, controls, save states and records are stored next to the
 executable, so its folder must be writable.
 
@@ -86,7 +88,6 @@ created on the first run.
 ## To do
 
 - macOS release
-- 120 fps
 - More responsive bike handling
 - Analog controls for throttle, brake and steering
 - Sound in the demo mode

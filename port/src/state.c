@@ -2,8 +2,8 @@
 #include "recomp_rt.h"
 #ifdef RT_TRANSLATE
 #include "rt_translate.h"
-#define BLOCK_COUNT rt_code_map_count
-#define BLOCK_ADDR(i) rt_code_map[i].addr
+#define BLOCK_COUNT rt_translate_block_count()
+#define BLOCK_ADDR(i) rt_translate_block_addr(i)
 #else
 #define BLOCK_COUNT rt_block_count
 #define BLOCK_ADDR(i) rt_blocks[i].addr

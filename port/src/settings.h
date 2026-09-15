@@ -21,6 +21,7 @@ typedef struct {
   int vsync;                /* VSYNC_* */
   int show_fps;
   int volume;               /* 0..100 */
+  int frame_rate;           /* 60 or 120: logic ticks and video frames per second (from the next start) */
 } AppSettings;
 
 void settings_default(AppSettings *s);

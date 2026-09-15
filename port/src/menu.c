@@ -12,7 +12,7 @@ typedef struct {
 } Item;
 
 enum {
-  ID_RESUME, ID_RESET, ID_QUIT, ID_DISPLAY, ID_WINDOW, ID_RENDER, ID_SCALING, ID_ASPECT, ID_FORMAT, ID_VSYNC, ID_FPS,
+  ID_RESUME, ID_RESET, ID_QUIT, ID_DISPLAY, ID_WINDOW, ID_RENDER, ID_SCALING, ID_ASPECT, ID_FORMAT, ID_VSYNC, ID_RATE, ID_FPS,
   ID_FILTER, ID_TVL, ID_SCANLINES, ID_MASK, ID_GLOW, ID_CURVATURE, ID_VIGNETTE, ID_SHARPNESS, ID_BRIGHTNESS,
   ID_VOLUME, ID_NONE
 };
@@ -27,6 +27,7 @@ static const Item items[] = {
   {KIND_CHOICE, "ASPECT RATIO", ID_ASPECT},
   {KIND_CHOICE, "SCREEN FORMAT", ID_FORMAT},
   {KIND_CHOICE, "V-SYNC", ID_VSYNC},
+  {KIND_CHOICE, "FRAME RATE", ID_RATE},
   {KIND_CHOICE, "FPS COUNTER", ID_FPS},
   {KIND_HEADER, "CRT", ID_NONE},
   {KIND_CHOICE, "FILTER", ID_FILTER},
@@ -44,6 +45,9 @@ static const Item items[] = {
   {KIND_ACTION, "QUIT GAME", ID_QUIT},
 };
 #define N_ITEMS (int)(sizeof items / sizeof items[0])
+
+int menu_rate = 1;
+int menu_rate_choice;
 
 static int cursor;
 static uint16_t prev_pad;
@@ -88,6 +92,9 @@ static int change(AppSettings *s, int id, int dir)
     case ID_ASPECT: s->video.aspect_43 = !s->video.aspect_43; return APPLY_WINDOW;
     case ID_FORMAT: s->video.screen_format = wrap(s->video.screen_format + dir, FORMAT_COUNT); return 0;
     case ID_VSYNC: s->vsync = wrap(s->vsync + dir, VSYNC_COUNT); return APPLY_VSYNC;
+    case ID_RATE:
+      if (menu_rate_choice) s->frame_rate = s->frame_rate == 120 ? 60 : 120;
+      return 0;
     case ID_FPS: s->show_fps = !s->show_fps; return 0;
     case ID_FILTER: s->video.crt = wrap(s->video.crt + dir, CRT_COUNT); return 0;
     case ID_TVL: {
@@ -119,7 +126,7 @@ int menu_update(AppSettings *s, uint16_t pad, int back, int *apply)
   uint16_t pressed = pad & ~prev_pad;
   /* auto-repeat of held directions */
   if (pad & 0x0f) {
-    if (++repeat_timer > 18 && repeat_timer % 4 == 0)
+    if (++repeat_timer > 18 * menu_rate && repeat_timer % (4 * menu_rate) == 0)
       pressed |= pad & 0x0f;
   } else {
     repeat_timer = 0;
@@ -166,6 +173,12 @@ static const char *value_text(const AppSettings *s, int id, char *buf, size_t n)
       return formats[s->video.screen_format];
     }
     case ID_VSYNC: return vsync[s->vsync];
+    case ID_RATE:
+      if (s->frame_rate != 60 * menu_rate) {
+        snprintf(buf, n, "%d FPS (RESTART)", s->frame_rate);
+        return buf;
+      }
+      return s->frame_rate == 120 ? "120 FPS" : "60 FPS";
     case ID_FPS: return s->show_fps ? "ON" : "OFF";
     case ID_FILTER: return filters[s->video.crt];
     case ID_TVL:
@@ -207,7 +220,7 @@ void menu_draw(const AppSettings *s)
     }
     int selected = i == cursor;
     int dim = (crt_off && it->id == ID_RENDER) || (crt_off && (it->kind == KIND_PERCENT || it->id == ID_TVL) && it->id != ID_VOLUME) ||
-              (it->id == ID_TVL && s->video.crt < CRT_APERTURE_GRILLE);
+              (it->id == ID_TVL && s->video.crt < CRT_APERTURE_GRILLE) || (it->id == ID_RATE && !menu_rate_choice);
     if (selected)
       ui_box(px + 12, y - 4, panel_w - 24, row_h - 1, 0xff304868);
     uint32_t color = dim ? 0xff707880 : selected ? 0xffffffff : 0xffc8d0d8;

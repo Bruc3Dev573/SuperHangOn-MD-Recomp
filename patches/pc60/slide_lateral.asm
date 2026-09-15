@@ -1,4 +1,4 @@
 ; replace $AC48-$AC4A
-; player sliding after a crash: lateral step 8 per tick instead of 16
+; player sliding after a crash: lateral step 16 >> TickShift per tick
 loc_00AC48:
-	moveq	#8,d0
+	moveq	#16>>TickShift,d0

@@ -2,7 +2,7 @@
 #include "rompatch.h"
 
 
-const RomPatch rom_patches[] = {
+const RomPatch rom_patches_original[] = {
   {0, 0, 0},
 };
-const int rom_patch_count = 0;
+const int rom_patch_count_original = 0;

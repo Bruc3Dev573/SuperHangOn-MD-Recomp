@@ -60,7 +60,8 @@ sed 's/$/\r/' > "$stage/README.txt" <<EOF
 Super Hang-On (Mega Drive) PC port ($(date +%Y-%m-%d), $(git rev-parse --short HEAD), ${patches:-30 Hz})
 
 This package contains no game code and no ROM data: you need your own ROM.
-At the first start the game code is translated from it (shangon.cache).
+At the first start the game code is translated from it (shangon.cache,
+shangon120.cache at 120 fps).
 
 Setup
   1. Copy your "Super Hang-On (Japan, USA) (En,Ja)" ROM into this folder,
@@ -69,7 +70,7 @@ Setup
   2. Run shangon.exe
 
 Settings menu: Esc, F1 or the controller Back button (display, screen format,
-CRT filters, volume, reset, quit). F3 shows the frame rate counter.
+frame rate 60 or 120, CRT filters, volume, reset, quit). F3 shows the frame rate counter.
 Options: --fullscreen, --window W H, --mute, --vsync / --no-vsync,
 --format 4:3|16:9|21:9,
 --crt off|scanlines|aperture|slot|shadow.

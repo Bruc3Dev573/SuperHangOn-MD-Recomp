@@ -1,3 +1,5 @@
-; replace $A47E-$A480
-; lateral position: steering x speed per tick, halved (the original doubled it)
+; replace $A47E-$A486
+; lateral position: steering x speed (the original doubled it) divided among
+; TickCount ticks
+	jsr	(Steer60Lateral).l
 	nop

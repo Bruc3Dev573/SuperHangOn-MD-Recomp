@@ -1,4 +1,4 @@
 ; replace $D5B8-$D5BA
-; lane change: 2 per tick instead of 4
+; lane change: 4 >> TickShift per tick (4 at 30 Hz)
 loc_00D5B8:
-	moveq	#2,d0
+	moveq	#4>>TickShift,d0

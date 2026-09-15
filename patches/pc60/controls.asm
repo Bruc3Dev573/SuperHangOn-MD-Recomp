@@ -1,10 +1,11 @@
 ; insert $161AA
 ; ---------------------------------------------------------------------------
-; 60 Hz controls: throttle, brake and steering ramps (whole steps on every second tick)
+; high rate controls: throttle, brake and steering ramps (whole steps once every
+; TickCount ticks)
 ; ---------------------------------------------------------------------------
 
 ; Throttle and brake ramps take the whole 30 Hz step on Accel60Step ticks
-; (every second tick, the first one when A, B or C changes) and stay unchanged
+; (once every TickCount ticks, the first one when A, B or C changes) and stay unchanged
 ; on the others.
 Ctl60Throttle:
 	tst.b	(Accel60Step).w

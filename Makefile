@@ -15,6 +15,9 @@ OUT       := build/shangon.md
 # patched builds: make patched PATCHES="patches/pc60 patches/relax" NAME=pc60
 PATCHES   ?=
 NAME      ?= patched
+# equates for the overlays: TickShift = log2 of the logic ticks per 30 Hz tick
+# (patches/pc60: 1 for 60 ticks per second, 2 for 120)
+DEFINES   ?= TickShift=1
 PSRC      := build/$(NAME).asm
 POUT      := build/$(NAME).md
 
@@ -44,7 +47,7 @@ verify: $(OUT)
 patched: $(BASEROM) | build
 	rm -f $(POUT)
 	$(PYTHON) tools/disasm/gen.py $(BASEROM) symbols.txt analysis/trace_entries.txt $(PSRC) \
-	  $(foreach d,$(PATCHES),--overlay $(d))
+	  $(foreach d,$(PATCHES),--overlay $(d)) $(foreach d,$(DEFINES),--define $(d))
 	$(VASM) $(VASMFLAGS) -L build/$(NAME).lst -o $(POUT) $(PSRC)
 	$(PYTHON) tools/checksum.py $(POUT)
 

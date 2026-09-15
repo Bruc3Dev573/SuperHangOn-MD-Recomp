@@ -16,6 +16,9 @@ typedef struct {
 extern const RtBlock rt_blocks[];
 extern const int rt_block_count;
 
+/* video frames per 1/60 s (1 or 2): must match the TickShift of the game code */
+extern int rt_rate;
+
 /* approximate 68000 cycles executed since the last video frame */
 extern uint32_t rt_cycles;
 static inline void rt_charge(uint32_t cycles) { rt_cycles += cycles; }

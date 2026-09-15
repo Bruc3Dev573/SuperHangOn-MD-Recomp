@@ -2,7 +2,7 @@
 ; ---------------------------------------------------------------------------
 ; Race VBlank (replaces $E906-$E9CC). The original ran the tick uploads on the
 ; 1st VBlank of a tick and the HUD work on the 2nd. When the main loop has
-; completed a 60 Hz tick (Sched60Ready) both run on this VBlank. Modes that
+; completed a tick (Sched60Ready) both run on this VBlank. Modes that
 ; still wait with WaitVBlankTicks8 (race start, ranking) keep the original
 ; alternation.
 ; ---------------------------------------------------------------------------

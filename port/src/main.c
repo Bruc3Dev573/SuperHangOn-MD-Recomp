@@ -6,7 +6,7 @@
  *           [--scale-mode integer|fit|stretch] [--square-pixels] [--format 4:3|16:9|21:9]
  *           [--no-gl] [--no-fps]
  *           [--mute] [--frames N] [--input FILE] [--screenshot FRAME[-LAST] FILE]
- *           [--no-rom-check] [--data DIR]
+ *           [--no-rom-check] [--data DIR] [--fps 60|120]
  *
  * The ROM must be the one the game code was recompiled from (SHA1 checked).
  * Default ROM: baserom.md in the game directory, else rom/baserom.md (a
@@ -51,6 +51,11 @@
 #include "rompatch.h"
 #ifdef RT_TRANSLATE
 #include "rt_translate.h"
+#ifdef RT_CODE_SETS_RATES
+extern const RtCodeSet rt_code_set_60hz, rt_code_set_120hz;
+#else
+extern const RtCodeSet rt_code_set_original;
+#endif
 #endif
 #include "overlay.h"
 #include "png.h"
@@ -59,7 +64,7 @@
 #include "ui.h"
 #include "menu.h"
 
-#define FPS 60
+static int FPS = 60;                  /* video frames per second: 60 x rt_rate */
 #define ROM_SHA1 "ecfd7b3bf4dcbee472ddf2f9cdbe968a05b814e0"
 
 static SDL_Window *window;
@@ -282,7 +287,7 @@ static void open_audio(void)
   }
   audio_rate = have.freq;
   /* the emulated frame (262 lines) is played in one 1/60 s video frame */
-  double in_per_second = (double)(MD_MCYCLES_PER_LINE * MD_LINES_PER_FRAME) / 1008.0 * FPS;
+  double in_per_second = (double)(MD_MCYCLES_PER_LINE * MD_LINES_PER_FRAME) / 1008.0 * 60;
   audio_step = in_per_second / audio_rate;
   resample_init(&resampler, in_per_second, audio_rate);
   SDL_PauseAudioDevice(audio_dev, 0);
@@ -500,7 +505,7 @@ static void usage(void)
                   "               [--crt off|scanlines|aperture|slot|shadow] [--render-height N]\n"
                   "               [--scale-mode integer|fit|stretch] [--square-pixels] [--no-gl] [--no-fps]\n"
                   "               [--mute] [--frames N] [--input FILE] [--screenshot FRAME FILE]\n"
-                  "               [--no-rom-check] [--data DIR]\n");
+                  "               [--no-rom-check] [--data DIR] [--fps 60|120]\n");
   exit(1);
 }
 
@@ -518,6 +523,7 @@ static void game_directory(char *out, size_t size)
 int main(int argc, char **argv)
 {
   const char *rom = NULL, *data_dir = NULL;
+  int cli_fps = 0;
   int no_gl = 0, win_w = 0, win_h = 0;
   int scale = 0, fullscreen = 0, mute = 0, rom_check = 1;
   /* data directory first: settings.ini lives there, the options override it */
@@ -575,6 +581,7 @@ int main(int argc, char **argv)
       shot_file = argv[++i];
     }
     else if (!strcmp(argv[i], "--no-rom-check")) rom_check = 0;
+    else if (!strcmp(argv[i], "--fps") && i + 1 < argc) cli_fps = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--data") && i + 1 < argc) i++;
     else if (!strcmp(argv[i], "--input") && i + 1 < argc) load_script(argv[++i]);
     else if (!strcmp(argv[i], "--frames") && i + 1 < argc) frame_limit = atol(argv[++i]);
@@ -606,6 +613,25 @@ int main(int argc, char **argv)
     fprintf(stderr, "shangon: %s is not the expected ROM (SHA1 %s), continuing\n", rom, digest);
   }
   /* code added by the source overlays (patches/pc60) */
+  /* frame rate: 60 or 120 logic ticks and video frames per second */
+  int want_rate = (cli_fps ? cli_fps : settings.frame_rate) == 120 ? 2 : 1;
+#if defined(RT_CODE_SETS_RATES)
+  const RtCodeSet *code_set = want_rate == 2 ? &rt_code_set_120hz : &rt_code_set_60hz;
+  rt_rate = want_rate;
+  menu_rate_choice = 1;
+#elif defined(RT_CODE_SET_ORIGINAL)
+  const RtCodeSet *code_set = &rt_code_set_original;
+  (void)want_rate;
+#else
+  rt_rate = SHANGON_FIXED_RATE;
+  (void)want_rate;
+#endif
+  menu_rate = rt_rate;
+  FPS = 60 * rt_rate;
+#ifdef RT_TRANSLATE
+  const RomPatch *rom_patches = code_set->patches;
+  int rom_patch_count = *code_set->patch_count;
+#endif
   for (int i = 0; i < rom_patch_count; i++)
     if (rom_patches[i].addr + rom_patches[i].len <= md.rom_size)
       memcpy(md.rom + rom_patches[i].addr, rom_patches[i].bytes, rom_patches[i].len);
@@ -613,8 +639,8 @@ int main(int argc, char **argv)
   /* the game code: decoded from the ROM now, or read from the cache made at
    * the first start */
   char cache[1100];
-  snprintf(cache, sizeof cache, "%sshangon.cache", data);
-  if (rt_translate_init(md.rom, md.rom_size, cache) != 0)
+  snprintf(cache, sizeof cache, rt_rate == 2 ? "%sshangon120.cache" : "%sshangon.cache", data);
+  if (rt_translate_init(code_set, md.rom, md.rom_size, cache) != 0)
     return fatal("%s: the game code could not be decoded.", rom);
 #endif
 

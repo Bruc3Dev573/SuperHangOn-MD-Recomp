@@ -1,15 +1,20 @@
 ; insert $161AA
 ; ---------------------------------------------------------------------------
-; 60 Hz rival bikes (objects at $FFCC40, $40 bytes each, a0)
+; high rate rival bikes (objects at $FFCC40, $40 bytes each, a0)
 ; ---------------------------------------------------------------------------
 
 ; The object's own tick counter ($39,a0) paces the slower updates, so their
 ; phase does not depend on when the race started.
 
-; ($30,a0) slipstream counter: +1 / -1 every second tick
+; ($30,a0) slipstream counter: +1 / -1 once every TickCount ticks (the low
+; TickShift bits of the tick counter all set)
 Rival60Draft:
-	btst	#$0,($39,a0)
-	beq.s	.done
+	move.w	d0,-(sp)
+	move.b	($39,a0),d0
+	not.b	d0
+	andi.b	#TickCount-1,d0
+	movem.w	(sp)+,d0		; (flags kept)
+	bne.s	.done
 	tst.w	($ff0652).l
 	beq.s	.dec
 	addq.w	#1,($30,a0)
@@ -21,19 +26,24 @@ Rival60Draft:
 .done:
 	jmp	(loc_00D630).l
 
-; ($a,a0) speed: +1 every second tick (every tick at 30 Hz), or one step
-; towards ($32,a0) every fourth tick (every second tick at 30 Hz)
+; ($a,a0) speed: +1 once every TickCount ticks (every tick at 30 Hz), or one
+; step towards ($32,a0) once every 2 x TickCount ticks (every second tick at
+; 30 Hz)
 Rival60Speed:
 	btst	#$2,($3a,a0)
 	beq.s	.follow
-	btst	#$0,($39,a0)
-	beq.s	.done
+	move.w	d0,-(sp)
+	move.b	($39,a0),d0
+	not.b	d0
+	andi.b	#TickCount-1,d0
+	movem.w	(sp)+,d0		; (flags kept)
+	bne.s	.done
 	addq.w	#1,($a,a0)
 	bra.s	.done
 .follow:
 	move.b	($39,a0),d0
 	not.b	d0
-	andi.b	#$3,d0
+	andi.b	#(2<<TickShift)-1,d0
 	bne.s	.done
 	moveq	#1,d0
 	move.w	($32,a0),d1
@@ -46,17 +56,23 @@ Rival60Speed:
 .done:
 	jmp	(loc_00D65A).l
 
-; collision push on the player: half per tick, then the original add
+; collision push on the player: divided among TickCount ticks, then the
+; original add
 Rival60Push:
 	bsr	Half60_d0
 	add.w	($ff065a).l,d0
 	rts
 
-; crashed rival: x position stored, tumble phase advances every second tick
+; crashed rival: x position stored, tumble phase advances once every TickCount
+; ticks
 Rival60Tumble:
 	move.w	d0,($10,a0)
-	btst	#$0,($39,a0)
-	beq.s	.done
+	move.w	d0,-(sp)
+	move.b	($39,a0),d0
+	not.b	d0
+	andi.b	#TickCount-1,d0
+	bne.s	.done
 	addq.b	#1,($3e,a0)
 .done:
+	move.w	(sp)+,d0
 	rts

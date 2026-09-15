@@ -580,8 +580,24 @@ static void save_cache(const char *path, const CacheHeader *h)
     remove(path);
 }
 
-int rt_translate_init(const uint8_t *image, uint32_t size, const char *cache_path)
+static const RtCodeSet *code_set;
+
+int rt_translate_block_count(void)
 {
+  return code_set ? code_set->block_count : 0;
+}
+
+uint32_t rt_translate_block_addr(int i)
+{
+  return code_set->blocks[i].addr;
+}
+
+int rt_translate_init(const RtCodeSet *set, const uint8_t *image, uint32_t size, const char *cache_path)
+{
+  const RtCodeBlock *rt_code_map = set->blocks;
+  const uint32_t *rt_code_waits = set->waits;
+  int rt_code_map_count = set->block_count, rt_code_wait_count = set->wait_count;
+  code_set = set;
   uint32_t total = 0;
   for (int i = 0; i < rt_code_map_count; i++)
     total += rt_code_map[i].count;

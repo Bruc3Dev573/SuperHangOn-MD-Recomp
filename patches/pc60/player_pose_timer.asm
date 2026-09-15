@@ -1,3 +1,3 @@
-; replace $A2E0-$A2E4
-; full-throttle pose timer: 1 per tick instead of 2
-	subq.w	#1,($3a,a0)
+; replace $A2E0-$A2E6
+; full-throttle pose timer: the 30 Hz step of 2 divided among TickCount ticks
+	jsr	(Pose60Timer).l
