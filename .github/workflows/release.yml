@@ -1,6 +1,6 @@
-# Builds the Linux and Windows packages (no game code, no ROM data) and, for a
-# tag v*, publishes them as a release. Run by hand, it only keeps the packages
-# as workflow artifacts.
+# Builds the Linux, Windows and macOS packages (no game code, no ROM data)
+# and, for a tag v*, publishes them as a release. Run by hand, it only keeps
+# the packages as workflow artifacts.
 name: release
 
 on:
@@ -30,16 +30,40 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: packages
+          name: packages-linux-windows
           path: |
             build/dist/*.tar.gz
             build/dist/*.zip
 
+  macos:
+    runs-on: macos-14
+    steps:
+      - name: Dependencies
+        run: brew install cmake pkg-config sdl2 sdl3
+
+      - name: macOS package
+        run: tools/package_macos.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-macos
+          path: build/dist/*.zip
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [packages, macos]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: packages-*
+          merge-multiple: true
+          path: build/dist
+
       - name: Release
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" build/dist/*.tar.gz build/dist/*.zip \
             --title "Super Hang-On $GITHUB_REF_NAME" \
-            --notes "Linux (x86_64) and Windows (x86_64) builds. They contain no game code and no ROM data: copy your own Super Hang-On (Japan, USA) (En,Ja) ROM next to the executable as baserom.md. At the first start the game code is translated from it."
+            --notes "Linux and Windows builds plus a native macOS Apple Silicon build. Packages contain no game code and no ROM data: copy your own Super Hang-On (Japan, USA) (En,Ja) ROM next to the executable as baserom.md. At the first start the game code is translated from it."
