@@ -98,7 +98,6 @@ same-speed 120 Hz trajectory has not been separately audited.
 
 ## To do
 
-
 - More responsive bike handling
 
 ## Credits
