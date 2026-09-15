@@ -17,6 +17,14 @@ void input_init(const char *config_path);
 void input_event(const SDL_Event *e);
 /* pad bits: bit0 U 1 D 2 L 3 R 4 B 5 C 6 A 7 S */
 uint16_t input_pad(void);
+/* analog steering: -127 (left) .. 127 (right), from the controller axis set
+ * in the configuration (past the dead zone) or full when the direction
+ * buttons or keys are held; flags bit 2: the steering is analog */
+typedef struct {
+  uint8_t flags;
+  int8_t steer;
+} AnalogInput;
+void input_analog(AnalogInput *a);
 /* hotkey held now / pressed since the last call */
 int input_hotkey_held(int hotkey);
 int input_hotkey_pressed(int hotkey);

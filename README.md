@@ -30,6 +30,8 @@ So I wanted to give one of my favourite games the treatment it deserves.
   scaling (integer, fit, stretch), TV or square pixels, vsync, volume
 - Frame rate counter
 - Keyboard and game controller support, remappable in `controls.ini`
+- Analog steering with the left stick (how far you push is how far the bike
+  steers)
 - Original sound: the game's own Z80 sound driver with cycle-accurate YM2612
   and PSG emulation
 
@@ -61,7 +63,7 @@ executable, so its folder must be writable.
 
 | Action | Keyboard | Controller |
 |---|---|---|
-| Steer | Arrow keys | D-pad / left stick |
+| Steer | Arrow keys | D-pad / left stick (analog) |
 | Accelerate (B) | X | A / right trigger |
 | Brake (A) | Z | X / left trigger |
 | Turbo (C) | C | B |
@@ -88,7 +90,6 @@ created on the first run.
 
 - macOS release
 - More responsive bike handling
-- Analog controls for throttle, brake and steering
 - Sound in the demo mode
 - In-game music selection
 

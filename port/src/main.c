@@ -209,6 +209,11 @@ static void poll_events(void)
     settings.frame_rate = settings.frame_rate == 120 ? 60 : 120;   /* scripted runs: change the rate */
   scripted_prev = scripted;
   md.pad_buttons[0] = input_pad() | (scripted & 0xff);
+  /* analog steering for the race (patches/pc60/controls.asm) */
+  AnalogInput analog;
+  input_analog(&analog);
+  md.ram[0xc640] = analog.flags;
+  md.ram[0xc643] = (uint8_t)analog.steer;
 
   const char *msg = persist_message();
   if (msg) {

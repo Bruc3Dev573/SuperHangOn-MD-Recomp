@@ -44,6 +44,13 @@ WaitVBlankTicks4:
 	; fraction of a step per tick).
 	move.b	($ffffc706).w,d7
 	andi.b	#$0c,d7
+	btst	#$2,(AnalogFlags).w	; analog steering counts as its button
+	beq.s	.steer_bits
+	moveq	#$04,d7
+	tst.b	(AnalogSteer).w
+	bmi.s	.steer_bits
+	moveq	#$08,d7
+.steer_bits:
 	cmp.b	(Steer60Input).w,d7
 	beq.s	.same
 	move.b	d7,(Steer60Input).w

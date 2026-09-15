@@ -30,6 +30,9 @@ static Action actions[8 + HOTKEY_COUNT] = {
 
 static SDL_GameController *controller;
 
+static int analog_axis = -1;                     /* steering axis, -1: none */
+static int analog_deadzone = 10;
+
 static const char default_config[] =
   "# Super Hang-On PC port: controls\n"
   "#\n"
@@ -58,7 +61,14 @@ static const char default_config[] =
   "slot_next = key:F7\n"
   "rewind = key:Backspace, button:leftshoulder\n"
   "fps_counter = key:F3\n"
-  "menu = key:Escape, key:F1, button:back\n";
+  "menu = key:Escape, key:F1, button:back\n"
+  "\n"
+  "# Analog steering during the race: a controller axis (empty: buttons only).\n"
+  "# How far the stick is pushed sets how far the bike steers; the buttons and\n"
+  "# keys above still steer fully.\n"
+  "steer_analog = axis:leftx\n"
+  "# dead zone of the analog axis, percent\n"
+  "analog_deadzone = 10\n";
 
 static char *trim(char *s)
 {
@@ -119,6 +129,24 @@ static void load_config(const char *text, const char *path)
     if (!eq) continue;
     *eq = 0;
     char *name = trim(line);
+    if (!strcmp(name, "steer_analog")) {
+      char *v = trim(eq + 1);
+      analog_axis = -1;
+      if (*v) {
+        SDL_GameControllerAxis ax = !strncmp(v, "axis:", 5) ? SDL_GameControllerGetAxisFromString(v + 5)
+                                                           : SDL_CONTROLLER_AXIS_INVALID;
+        if (ax == SDL_CONTROLLER_AXIS_INVALID)
+          fprintf(stderr, "%s:%d: ignored axis '%s'\n", path, lineno, v);
+        else
+          analog_axis = ax;
+      }
+      continue;
+    }
+    if (!strcmp(name, "analog_deadzone")) {
+      int d = atoi(trim(eq + 1));
+      analog_deadzone = d < 0 ? 0 : d > 90 ? 90 : d;
+      continue;
+    }
     int a;
     for (a = 0; a < N_ACTIONS; a++)
       if (!strcmp(actions[a].name, name)) break;
@@ -215,6 +243,45 @@ uint16_t input_pad(void)
   if ((m & 0x03) == 0x03) m &= ~0x03;            /* opposite directions cancel */
   if ((m & 0x0c) == 0x0c) m &= ~0x0c;
   return m;
+}
+
+/* an action held through a key or a button (not an axis) */
+static int action_button_held(const Action *a)
+{
+  for (int i = 0; i < a->count; i++)
+    if (a->bind[i].kind != BIND_AXIS && binding_active(&a->bind[i]))
+      return 1;
+  return 0;
+}
+
+/* 0 .. 255 past the dead zone of a value 0 .. 32767 */
+static int analog_amount(int v)
+{
+  int dz = 32767 * analog_deadzone / 100;
+  if (v <= dz)
+    return 0;
+  int r = (v - dz) * 255 / (32767 - dz);
+  return r > 255 ? 255 : r;
+}
+
+void input_analog(AnalogInput *out)
+{
+  int steer = 0, analog = 0;
+  if (controller && analog_axis >= 0) {
+    int x = SDL_GameControllerGetAxis(controller, analog_axis);
+    steer = analog_amount(x < 0 ? -x : x) * 127 / 255;
+    if (x < 0)
+      steer = -steer;
+    analog = steer != 0;
+  }
+  int left = action_button_held(&actions[2]), right = action_button_held(&actions[3]);
+  if (left != right) {
+    steer = left ? -127 : 127;                   /* the buttons steer fully */
+    analog = 0;
+  }
+  out->steer = (int8_t)steer;
+  /* analog only while the stick is used: otherwise the game reads its buttons */
+  out->flags = (uint8_t)(analog ? 4 : 0);
 }
 
 int input_hotkey_held(int hotkey)
