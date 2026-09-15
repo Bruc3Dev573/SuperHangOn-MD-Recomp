@@ -29,6 +29,10 @@ static Action actions[8 + HOTKEY_COUNT] = {
 #define N_ACTIONS (int)(sizeof actions / sizeof actions[0])
 
 static SDL_GameController *controller;
+static char config_path[1024];
+static int rebind_action = -1;
+static int rebind_finished;
+static void open_controller(int index);
 
 static const char default_config[] =
   "# Super Hang-On PC port: controls\n"
@@ -138,14 +142,17 @@ static void load_config(const char *text, const char *path)
   }
 }
 
-void input_init(const char *config_path)
+void input_init(const char *path)
 {
+  snprintf(config_path, sizeof config_path, "%s", path ? path : "");
+  rebind_action = -1;
+  rebind_finished = 0;
   /* defaults first, then the user's file */
   load_config(default_config, "defaults");
-  if (config_path) {
-    FILE *f = fopen(config_path, "rb");
+  if (path) {
+    FILE *f = fopen(path, "rb");
     if (!f) {
-      FILE *w = fopen(config_path, "w");
+      FILE *w = fopen(path, "w");
       if (w) {
         fputs(default_config, w);
         fclose(w);
@@ -157,14 +164,17 @@ void input_init(const char *config_path)
       char *text = n > 0 ? malloc((size_t)n + 1) : NULL;
       if (text) {
         text[fread(text, 1, (size_t)n, f)] = 0;
-        load_config(text, config_path);
+        load_config(text, path);
         free(text);
       }
       fclose(f);
     }
   }
   SDL_GameControllerEventState(SDL_ENABLE);
+  for (int i = 0; i < SDL_NumJoysticks(); i++)
+    open_controller(i);
 }
+
 
 static void open_controller(int index)
 {
@@ -172,17 +182,73 @@ static void open_controller(int index)
     controller = SDL_GameControllerOpen(index);
 }
 
-void input_event(const SDL_Event *e)
+static void binding_text(const Binding *b, char *buf, size_t size)
 {
-  if (e->type == SDL_CONTROLLERDEVICEADDED) {
-    open_controller(e->cdevice.which);
-  } else if (e->type == SDL_CONTROLLERDEVICEREMOVED && controller &&
-             SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller)) == e->cdevice.which) {
-    SDL_GameControllerClose(controller);
-    controller = NULL;
-    for (int i = 0; i < SDL_NumJoysticks(); i++)
-      open_controller(i);
+  if (!size) return;
+  switch (b->kind) {
+    case BIND_KEY:
+      snprintf(buf, size, "key:%s", SDL_GetScancodeName((SDL_Scancode)b->code));
+      break;
+    case BIND_BUTTON:
+      snprintf(buf, size, "button:%s", SDL_GameControllerGetStringForButton((SDL_GameControllerButton)b->code));
+      break;
+    case BIND_AXIS:
+      snprintf(buf, size, "axis:%s%c",
+               SDL_GameControllerGetStringForAxis((SDL_GameControllerAxis)b->code),
+               b->sign > 0 ? '+' : '-');
+      break;
   }
+}
+
+void input_save(void)
+{
+  if (!config_path[0])
+    return;
+  FILE *f = fopen(config_path, "w");
+  if (!f)
+    return;
+  fputs("# Super Hang-On PC port: controls (written by the settings menu)\n", f);
+  for (int a = 0; a < N_ACTIONS; a++) {
+    fprintf(f, "%s =", actions[a].name);
+    for (int i = 0; i < actions[a].count; i++) {
+      char text[64];
+      binding_text(&actions[a].bind[i], text, sizeof text);
+      fprintf(f, "%s%s", i ? ", " : " ", text);
+    }
+    fputc('\n', f);
+  }
+  fclose(f);
+}
+
+int input_action_count(void)
+{
+  return N_ACTIONS;
+}
+
+const char *input_action_name(int action)
+{
+  return action >= 0 && action < N_ACTIONS ? actions[action].name : "";
+}
+
+void input_action_binding_text(int action, char *buf, size_t size)
+{
+  if (!size) return;
+  buf[0] = 0;
+  if (action < 0 || action >= N_ACTIONS)
+    return;
+  size_t used = 0;
+  for (int i = 0; i < actions[action].count; i++) {
+    char text[64];
+    binding_text(&actions[action].bind[i], text, sizeof text);
+    int n = snprintf(buf + used, size - used, "%s%s", used ? ", " : "", text);
+    if (n < 0 || (size_t)n >= size - used) {
+      buf[size - 1] = 0;
+      return;
+    }
+    used += (size_t)n;
+  }
+  if (!used)
+    snprintf(buf, size, "unbound");
 }
 
 static int binding_active(const Binding *b)
@@ -206,6 +272,53 @@ static int action_active(const Action *a)
   return 0;
 }
 
+static int binding_strength(const Binding *b, int *axis_available)
+{
+  if (b->kind != BIND_AXIS)
+    return binding_active(b) ? 255 : 0;
+  if (!controller)
+    return 0;
+  *axis_available = 1;
+  int value = SDL_GameControllerGetAxis(controller, b->code) * b->sign;
+  if (value <= AXIS_THRESHOLD)
+    return 0;
+  int strength = (value - AXIS_THRESHOLD) * 255 / (32767 - AXIS_THRESHOLD);
+  return strength > 255 ? 255 : strength;
+}
+
+static int action_strength(const Action *a, int *axis_available)
+{
+  int strength = 0;
+  for (int i = 0; i < a->count; i++) {
+    int value = binding_strength(&a->bind[i], axis_available);
+    if (value > strength)
+      strength = value;
+  }
+  return strength;
+}
+
+int input_analog(uint8_t *throttle, uint8_t *brake, uint8_t *steering)
+{
+  int flags = 0;
+  int throttle_axis = 0, brake_axis = 0, left_axis = 0, right_axis = 0;
+  int left = action_strength(&actions[2], &left_axis);
+  int right = action_strength(&actions[3], &right_axis);
+  int t = action_strength(&actions[4], &throttle_axis);
+  int b = action_strength(&actions[6], &brake_axis);
+  int s = 128;
+  if (right > left)
+    s = 128 + right * 127 / 255;
+  else if (left > right)
+    s = 128 - left * 128 / 255;
+  if (throttle) *throttle = (uint8_t)t;
+  if (brake) *brake = (uint8_t)b;
+  if (steering) *steering = (uint8_t)s;
+  if (throttle_axis) flags |= INPUT_ANALOG_THROTTLE;
+  if (brake_axis) flags |= INPUT_ANALOG_BRAKE;
+  if (left_axis || right_axis) flags |= INPUT_ANALOG_STEERING;
+  return flags;
+}
+
 uint16_t input_pad(void)
 {
   uint16_t m = 0;
@@ -219,13 +332,104 @@ uint16_t input_pad(void)
 
 int input_hotkey_held(int hotkey)
 {
-  return action_active(&actions[8 + hotkey]);
+  return rebind_action < 0 && !rebind_finished && action_active(&actions[8 + hotkey]);
 }
 
 int input_hotkey_pressed(int hotkey)
 {
   Action *a = &actions[8 + hotkey];
+  if (rebind_action >= 0 || rebind_finished)
+    return 0;
   int now = action_active(a), pressed = now && !a->pressed_latch;
   a->pressed_latch = now;
   return pressed;
+}
+
+static void finish_rebind(const Binding *b)
+{
+  Action *a = &actions[rebind_action];
+  a->count = 1;
+  a->bind[0] = *b;
+  rebind_action = -1;
+  rebind_finished = 1;
+  input_save();
+}
+
+int input_rebind_event(const SDL_Event *e)
+{
+  if (rebind_action < 0)
+    return 0;
+  if (e->type == SDL_KEYDOWN && !e->key.repeat) {
+    if (e->key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
+      rebind_action = -1;
+      rebind_finished = 1;
+      return 1;
+    }
+    Binding b = {BIND_KEY, e->key.keysym.scancode, 0};
+    finish_rebind(&b);
+    return 1;
+  }
+  if (e->type == SDL_CONTROLLERBUTTONDOWN) {
+    if (e->cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
+      rebind_action = -1;
+      rebind_finished = 1;
+      return 1;
+    }
+    Binding b = {BIND_BUTTON, e->cbutton.button, 0};
+    finish_rebind(&b);
+    return 1;
+  }
+  if (e->type == SDL_CONTROLLERAXISMOTION && abs(e->caxis.value) > AXIS_THRESHOLD) {
+    Binding b = {BIND_AXIS, e->caxis.axis, e->caxis.value > 0 ? 1 : -1};
+    if (e->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERLEFT ||
+        e->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT)
+      b.sign = 1;
+    finish_rebind(&b);
+    return 1;
+  }
+  if (e->type == SDL_KEYUP || e->type == SDL_CONTROLLERBUTTONUP ||
+      e->type == SDL_CONTROLLERAXISMOTION)
+    return 1;                                  /* don't leak capture input */
+  return 0;
+}
+
+void input_rebind_begin(int action)
+{
+  if (action >= 0 && action < N_ACTIONS) {
+    rebind_action = action;
+    rebind_finished = 0;
+  }
+}
+
+void input_rebind_cancel(void)
+{
+  rebind_action = -1;
+  rebind_finished = 0;
+}
+
+int input_rebind_active(void)
+{
+  return rebind_action >= 0;
+}
+
+int input_rebind_finished(void)
+{
+  int finished = rebind_finished;
+  rebind_finished = 0;
+  return finished;
+}
+
+void input_event(const SDL_Event *e)
+{
+  if (e->type == SDL_CONTROLLERDEVICEADDED) {
+    open_controller(e->cdevice.which);
+  } else if (e->type == SDL_CONTROLLERDEVICEREMOVED && controller &&
+             SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller)) == e->cdevice.which) {
+    SDL_GameControllerClose(controller);
+    controller = NULL;
+    for (int i = 0; i < SDL_NumJoysticks(); i++)
+      open_controller(i);
+  }
+  if (input_rebind_event(e))
+    return;
 }

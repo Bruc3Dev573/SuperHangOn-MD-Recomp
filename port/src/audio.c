@@ -282,6 +282,13 @@ void audio_z80_reset(void)
   fm_acc[0] = fm_acc[1] = 0;
 }
 
+void audio_play_music(int track)
+{
+  static const uint8_t sound_id[AUDIO_MUSIC_TRACK_COUNT] = {0x82, 0x84, 0x83, 0x85};
+  if (track >= 0 && track < AUDIO_MUSIC_TRACK_COUNT)
+    md.zram[0x1c03] = sound_id[track];
+}
+
 uint64_t audio_mcycles(void)
 {
   return (uint64_t)(z80_time > audio_time ? z80_time : audio_time);

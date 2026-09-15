@@ -11,7 +11,7 @@ enum { MENU_OPEN, MENU_CLOSED, MENU_QUIT, MENU_RESET };
 /* what a change needs from the frontend */
 enum {
   APPLY_WINDOW = 1, APPLY_FULLSCREEN = 2, APPLY_VSYNC = 4,
-  APPLY_FPS = 8, APPLY_SAVE = 16
+  APPLY_FPS = 8, APPLY_SAVE = 16, APPLY_MUSIC = 32
 };
 
 void menu_open(void);

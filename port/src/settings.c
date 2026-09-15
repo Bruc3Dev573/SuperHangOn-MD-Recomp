@@ -29,6 +29,7 @@ void settings_default(AppSettings *s)
   s->fps_limit = GAME_FPS_60;
   s->show_fps = 1;
   s->volume = 100;
+  s->music_track = 0;
 }
 
 /* key = value lines; unknown keys are ignored */
@@ -43,6 +44,7 @@ INT_FIELD(vsync, vsync)
 INT_FIELD(fps_limit, fps_limit)
 INT_FIELD(fps, show_fps)
 INT_FIELD(volume, volume)
+INT_FIELD(music_track, music_track)
 INT_FIELD(scale, video.scale_mode)
 INT_FIELD(aspect, video.aspect_43)
 INT_FIELD(crt, video.crt)
@@ -59,6 +61,7 @@ FLT_FIELD(brightness, video.brightness)
 static const Entry entries[] = {
   {"fullscreen", 0, f_fullscreen}, {"window_preset", 0, f_window}, {"render_resolution", 0, f_render},
   {"vsync", 0, f_vsync}, {"fps_limit", 0, f_fps_limit}, {"show_fps", 0, f_fps}, {"volume", 0, f_volume},
+  {"music_track", 0, f_music_track},
   {"screen_format", 0, f_format}, {"scaling", 0, f_scale}, {"aspect_4_3", 0, f_aspect}, {"crt_filter", 0, f_crt}, {"crt_mask_tvl", 0, f_tvl},
   {"crt_scanlines", 1, f_scanlines}, {"crt_mask", 1, f_mask}, {"crt_glow", 1, f_glow},
   {"crt_curvature", 1, f_curvature}, {"crt_vignette", 1, f_vignette}, {"crt_sharpness", 1, f_sharpness},
@@ -92,6 +95,7 @@ void settings_load(AppSettings *s, const char *path)
   if (s->fps_limit != GAME_FPS_120)
     s->fps_limit = GAME_FPS_60;
   s->volume = clampi(s->volume, 0, 100);
+  s->music_track = clampi(s->music_track, 0, MUSIC_TRACK_COUNT - 1);
   s->video.scale_mode = clampi(s->video.scale_mode, 0, SCALE_COUNT - 1);
   s->video.crt = clampi(s->video.crt, 0, CRT_COUNT - 1);
   s->video.screen_format = clampi(s->video.screen_format, 0, FORMAT_COUNT - 1);

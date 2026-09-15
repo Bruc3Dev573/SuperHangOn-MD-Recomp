@@ -11,6 +11,8 @@
 #define MD_MCYCLES_PER_LINE 3420u
 #define MD_LINES_PER_FRAME 262u
 #define AUDIO_NATIVE_RATE ((double)MD_MASTER_CLOCK / 1008.0)   /* YM2612 sample rate, ~53267 Hz */
+#define AUDIO_MUSIC_TRACK_COUNT 4
+
 
 void audio_init(void);
 /* advance Z80, YM2612 and PSG by `mcycles` master-clock cycles */
@@ -19,6 +21,8 @@ void audio_run(uint32_t mcycles);
 void audio_set_z80_int(int asserted);
 /* Z80 reset line asserted by the 68000: resets the Z80 and the YM2612 */
 void audio_z80_reset(void);
+/* starts one of the four original music tracks (1..4 in the menu) */
+void audio_play_music(int track);
 /* master-clock time of the sound hardware since power on */
 uint64_t audio_mcycles(void);
 /* native-rate stereo samples produced so far (interleaved L/R); returns frames */

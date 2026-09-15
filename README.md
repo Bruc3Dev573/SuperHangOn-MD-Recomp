@@ -15,7 +15,7 @@ So I wanted to give one of my favourite games the treatment it deserves.
 
 ## Features
 
-- 60 fps game logic and rendering
+- Selectable 60 or 120 Hz emulated game rate
 - Reduced input lag
 - 16:9 and 21:9 widescreen races
 - CRT filters (scanlines, aperture grille, slot mask, shadow mask) with
@@ -26,11 +26,13 @@ So I wanted to give one of my favourite games the treatment it deserves.
   every continent without interruptions, the music and the wind in your hair :)
 - Rankings and records kept between sessions
 - Settings menu: fullscreen or window, window size, render resolution,
-  scaling (integer, fit, stretch), TV or square pixels, vsync, volume
+  scaling (integer, fit, stretch), TV or square pixels, vsync, game FPS,
+  music, volume and controls editor
 - Frame rate counter
-- Keyboard and game controller support, remappable in `controls.ini`
+- Keyboard and game controller support, including analog throttle, brake and
+  steering axes
 - Original sound: the game's own Z80 sound driver with cycle-accurate YM2612
-  and PSG emulation
+  and PSG emulation, including attract-mode audio
 
 ## How to play
 
@@ -45,9 +47,14 @@ So I wanted to give one of my favourite games the treatment it deserves.
    | CRC32 | `cb2201a3` |
    | Size | 524,288 bytes |
 
-3. Run `shangon` (Linux) or `shangon.exe` (Windows). On Linux SDL2 must be
-   installed (Debian/Ubuntu: `sudo apt install libsdl2-2.0-0`); the Windows
-   release already includes it.
+3. Run `shangon` (Linux), `shangon.exe` (Windows) or `./shangon` from Terminal
+   (macOS). On Linux SDL2 must be installed (Debian/Ubuntu:
+   `sudo apt install libsdl2-2.0-0`); the Windows and macOS releases include it.
+
+For a 120 Hz display or compatible switcher, choose `GAME FPS: 120` in the
+settings menu or run `./shangon --fps-limit 120`. `--120hz` remains an alias
+that also requests V-SYNC. This runs the full emulated machine at 120 Hz and
+resamples audio to the selected cadence; it does not duplicate a 60 Hz frame.
 
 The ROM is not included and never will be. The release contains no game code
 either: at the first start it is translated from your ROM and kept in
@@ -73,8 +80,10 @@ executable, so its folder must be writable.
 | Frame rate counter | F3 | |
 
 Controller buttons use the Xbox layout: on a PlayStation controller A, B and X
-are cross, circle and square. All bindings can be changed in `controls.ini`,
-created on the first run.
+are cross, circle and square. The left stick and trigger axes are used for
+analog steering, acceleration and braking. All bindings can be changed from
+Settings > Controls and are also stored in `controls.ini`, created on the
+first run.
 
 ## Known issues
 
@@ -83,14 +92,14 @@ created on the first run.
 - I'm not happy with the CRT filters yet, but I'm working on them (I swear!).
 - Something I haven't found yet, for sure.
 
+The current 120 Hz mode runs the complete emulated machine twice as often.
+The gameplay overlay is still authored around its 60 Hz scheduler, so its
+same-speed 120 Hz trajectory has not been separately audited.
+
 ## To do
 
-- macOS release
-- 120 fps
+
 - More responsive bike handling
-- Analog controls for throttle, brake and steering
-- Sound in the demo mode
-- In-game music selection
 
 ## Credits
 

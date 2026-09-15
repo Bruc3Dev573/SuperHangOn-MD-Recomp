@@ -19,17 +19,17 @@
  *
  * The recompiled game runs from the reset vector (rt_start); at every
  * selected game frame the runtime calls on_frame(), which renders the VDP
- * state, presents it, queues that frame's sound, polls input and paces the
- * loop to the selected 60/120 frames per second. The sound is resampled
- * from the native YM2612 rate to the device rate; the ratio follows the
- * device queue level so that sound and video, driven by different clocks,
- * stay in step without gaps or growing latency.
+ * state, presents it, queues that frame's sound and polls input. Native and
+ * browser builds run the emulated machine at the selected 60/120 frames per
+ * second. The sound is resampled from the native YM2612 rate to the device
+ * rate; the ratio follows the device queue level so sound and video, driven
+ * by different clocks, stay in step without gaps or growing latency.
  *
  * Controls are configured in controls.ini (written with the defaults on the
- * first run): arrows / D-pad / left stick, Z X C = A B C (controller X A B and
- * the triggers: right = B accelerate, left = A brake), Enter / Start; F5 save
- * state, F8 load, F6 / F7 slot, Backspace / left shoulder rewind, F11
- * fullscreen, F3 frame rate counter, Esc / F1 / controller Back settings menu.
+ * first run). Controller axes provide analog throttle, brake and steering;
+ * digital bindings remain available as a fallback. F5 save state, F8 load,
+ * F6 / F7 slot, Backspace / left shoulder rewind, F11 fullscreen, F3 frame
+ * rate counter, Esc / F1 / controller Back settings menu.
  *
  * Display, CRT filter and audio settings are kept in settings.ini (settings
  * menu); command line options override them for one run.
@@ -169,6 +169,19 @@ static void apply_fps_limit(void)
   }
 }
 
+static void update_analog_controls(uint16_t *pad)
+{
+  uint8_t throttle, brake, steering;
+  int flags = input_analog(&throttle, &brake, &steering);
+  md.ram[0xc626] = (uint8_t)flags;
+  md.ram[0xc627] = throttle;
+  md.ram[0xc628] = brake;
+  md.ram[0xc629] = steering;
+  if (flags & INPUT_ANALOG_STEERING)
+    *pad &= ~0x0c;                         /* the ROM overlay owns the axis */
+}
+
+
 static void apply_vsync(void)
 {
   int auto_vsync = refresh_hz == game_fps;
@@ -226,7 +239,9 @@ static void poll_events(void)
   if (scripted & ~scripted_prev & SCRIPT_MENU)
     menu_request = 1;
   scripted_prev = scripted;
-  md.pad_buttons[0] = input_pad() | (scripted & 0xff);
+  uint16_t pad = input_pad();
+  update_analog_controls(&pad);
+  md.pad_buttons[0] = pad | (scripted & 0xff);
 
   const char *msg = persist_message();
   if (msg) {
@@ -433,6 +448,7 @@ static void run_menu(void)
     int state = menu_update(&settings, input_pad() | (script_buttons() & 0xff), back, &apply);
     if (apply & APPLY_FPS)
       apply_fps_limit();
+    if (apply & APPLY_MUSIC) audio_play_music(settings.music_track);
     if (apply & APPLY_FULLSCREEN) apply_fullscreen();
     if (apply & APPLY_WINDOW) apply_window();
     if (apply & (APPLY_VSYNC | APPLY_FPS)) apply_vsync();
@@ -487,6 +503,7 @@ static int browser_menu_tick(void)
   int state = menu_update(&settings, input_pad(), back, &apply);
   if (apply & APPLY_FPS)
     apply_fps_limit();
+  if (apply & APPLY_MUSIC) audio_play_music(settings.music_track);
   if (apply & APPLY_FULLSCREEN) apply_fullscreen();
   if (apply & APPLY_WINDOW) apply_window();
   if (apply & (APPLY_VSYNC | APPLY_FPS)) apply_vsync();
