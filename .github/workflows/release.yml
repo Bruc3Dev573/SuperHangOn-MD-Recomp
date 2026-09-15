@@ -1,0 +1,45 @@
+# Builds the Linux and Windows packages (no game code, no ROM data) and, for a
+# tag v*, publishes them as a release. Run by hand, it only keeps the packages
+# as workflow artifacts.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  packages:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config libsdl2-dev gcc-mingw-w64-x86-64 zip curl
+
+      - name: Linux package
+        run: tools/package_linux.sh
+
+      - name: Windows package
+        run: tools/package_windows.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: |
+            build/dist/*.tar.gz
+            build/dist/*.zip
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" build/dist/*.tar.gz build/dist/*.zip \
+            --title "Super Hang-On $GITHUB_REF_NAME" \
+            --notes "Linux (x86_64) and Windows (x86_64) builds. They contain no game code and no ROM data: copy your own Super Hang-On (Japan, USA) (En,Ja) ROM next to the executable as baserom.md. At the first start the game code is translated from it."

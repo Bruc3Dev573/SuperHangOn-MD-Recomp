@@ -15,6 +15,9 @@
 #include "md.h"
 #include "audio.h"
 #include "state.h"
+#ifdef RT_TRANSLATE
+#include "rt_translate.h"
+#endif
 
 #define CODE_LIMIT 0x80000
 #define HANG_GUARD_CYCLES (128000u * 8)     /* 8 frames of 68000 time without waiting */
@@ -26,8 +29,10 @@ void (*rt_frame_end_callback)(M68K *c, uint32_t resume_pc);
 static jmp_buf top_loop;
 static uint32_t jump_pc;
 
-static RtBlockFn block_table[CODE_LIMIT / 2];
 static int vint_pending;
+
+#ifndef RT_TRANSLATE
+static RtBlockFn block_table[CODE_LIMIT / 2];
 
 static void build_table(void)
 {
@@ -35,6 +40,7 @@ static void build_table(void)
     if (rt_blocks[i].addr < CODE_LIMIT)
       block_table[rt_blocks[i].addr >> 1] = rt_blocks[i].fn;
 }
+#endif
 
 uint32_t rt_bad_pc(M68K *c, uint32_t pc)
 {
@@ -51,13 +57,22 @@ uint32_t rt_unsupported(M68K *c, uint32_t pc)
 
 void m68k_reset_devices(void) {}
 
-static inline RtBlockFn lookup(M68K *c, uint32_t pc)
+/* runs the block at pc (recompiled, or translated at start-up); returns the
+ * next address */
+#ifdef RT_TRANSLATE
+static inline uint32_t run_block(M68K *c, uint32_t pc)
+{
+  return rt_translate_run(c, pc);
+}
+#else
+static inline uint32_t run_block(M68K *c, uint32_t pc)
 {
   pc &= 0xffffff;
   if (pc >= CODE_LIMIT || (pc & 1) || !block_table[pc >> 1])
     rt_bad_pc(c, pc);
-  return block_table[pc >> 1];
+  return block_table[pc >> 1](c);
 }
+#endif
 
 /* Run an interrupt handler to completion: exception entry, then blocks until
  * the handler returns to `return_pc` with the stack restored. */
@@ -68,7 +83,7 @@ static void run_interrupt(M68K *c, int level, uint32_t return_pc)
   uint32_t pc = m68k_exception(c, 24 + level, return_pc);
   c->imask = level;
   do {
-    pc = lookup(c, pc)(c) & 0xffffff;
+    pc = run_block(c, pc) & 0xffffff;
   } while (!(pc == (return_pc & 0xffffff) && c->s == s_before && c->a[7] == sp_before));
 }
 
@@ -167,7 +182,9 @@ void rt_wait_point(M68K *c, uint32_t addr)
 
 void rt_start(M68K *c)
 {
+#ifndef RT_TRANSLATE
   build_table();
+#endif
   memset(c, 0, sizeof *c);
   c->s = 1;
   c->imask = 7;
@@ -177,7 +194,7 @@ void rt_start(M68K *c)
   if (setjmp(top_loop))
     pc = jump_pc;                     /* a state was loaded: continue at its resume point */
   for (;;) {
-    pc = lookup(c, pc)(c) & 0xffffff;
+    pc = run_block(c, pc) & 0xffffff;
     if (vint_pending && c->imask < 6) {
       vint_pending = 0;
       run_interrupt(c, 6, pc);

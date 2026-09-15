@@ -1,15 +1,23 @@
 #include "state.h"
 #include "recomp_rt.h"
+#ifdef RT_TRANSLATE
+#include "rt_translate.h"
+#define BLOCK_COUNT rt_code_map_count
+#define BLOCK_ADDR(i) rt_code_map[i].addr
+#else
+#define BLOCK_COUNT rt_block_count
+#define BLOCK_ADDR(i) rt_blocks[i].addr
+#endif
 
 #define STATE_MAGIC 0x53484f53u               /* "SHOS" */
 #define STATE_VERSION 1
 
 uint32_t state_build_id(void)
 {
-  /* FNV-1a over the recompiled block addresses and the state format */
+  /* FNV-1a over the block addresses and the state format */
   uint32_t h = 2166136261u;
-  for (int i = 0; i < rt_block_count; i++) {
-    uint32_t a = rt_blocks[i].addr;
+  for (int i = 0; i < BLOCK_COUNT; i++) {
+    uint32_t a = BLOCK_ADDR(i);
     for (int k = 0; k < 4; k++) {
       h ^= (a >> (k * 8)) & 0xff;
       h *= 16777619u;

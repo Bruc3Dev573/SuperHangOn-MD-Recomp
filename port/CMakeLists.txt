@@ -27,6 +27,26 @@ set(GEN_PATCH ${GEN_DIR}/rom_patch.c)
 # an empty value builds the original 30 Hz game
 set(SHANGON_PATCHES "patches/pc60;patches/relax" CACHE STRING "Overlay directories for the game code")
 
+# SHANGON_RUNTIME_TRANSLATION: the executable holds no game code; it decodes
+# the instructions from the ROM at start-up (src/rt_translate.c) following
+# the block structure in port/data/<overlays>/code_map.c, and applies the
+# overlays' bytes of port/data/<overlays>/rom_patch.c. These two files are
+# made from the ROM by tools/update_code_map.sh; the build needs no ROM.
+# Otherwise the game code is recompiled to C at build time (needs the ROM).
+option(SHANGON_RUNTIME_TRANSLATION "Translate the game code from the ROM at start-up" ON)
+string(REPLACE "patches/" "" DATA_TAG "${SHANGON_PATCHES}")
+string(REPLACE ";" "+" DATA_TAG "${DATA_TAG}")
+if(DATA_TAG STREQUAL "")
+  set(DATA_TAG original)
+endif()
+set(DATA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/data/${DATA_TAG})
+
+if(SHANGON_RUNTIME_TRANSLATION)
+  if(NOT EXISTS ${DATA_DIR}/code_map.c)
+    message(FATAL_ERROR "no code map for the overlays ${SHANGON_PATCHES} (${DATA_DIR}); run tools/update_code_map.sh")
+  endif()
+  set(GAME_SOURCES src/rt_translate.c src/m68k_decode.c ${DATA_DIR}/code_map.c ${DATA_DIR}/rom_patch.c)
+else()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 find_program(MAKE_PROGRAM make REQUIRED)
 file(GLOB RECOMP_PY CONFIGURE_DEPENDS ${ROOT}/tools/recomp/*.py ${ROOT}/tools/disasm/*.py)
@@ -48,6 +68,10 @@ add_custom_command(
   DEPENDS ${ROOT}/rom/baserom.md ${ROOT}/symbols.txt ${ROOT}/analysis/trace_entries.txt ${RECOMP_PY} ${PATCH_FILES}
   COMMENT "Recompiling 68000 game code to C (overlays: ${SHANGON_PATCHES})"
   VERBATIM)
+set(GAME_SOURCES ${GEN_CODE} ${GEN_PATCH})
+# generated code: huge, warnings off, no per-function optimisation blow-up
+set_source_files_properties(${GEN_CODE} PROPERTIES COMPILE_OPTIONS "-w")
+endif()
 
 set(RUNTIME_SOURCES
   src/rt.c
@@ -69,9 +93,6 @@ else()
 endif()
 target_include_directories(nuked_opn2 PUBLIC third_party/nuked-opn2)
 
-# generated code: huge, warnings off, no per-function optimisation blow-up
-set_source_files_properties(${GEN_CODE} PROPERTIES COMPILE_OPTIONS "-w")
-
 find_package(SDL2 REQUIRED)
 if(WIN32)
   # static libgcc so the executable needs no MinGW runtime DLLs
@@ -79,7 +100,10 @@ if(WIN32)
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -static-libgcc")
 endif()
 
-add_executable(shangon src/main.c src/input.c src/persist.c src/sha1.c src/overlay.c src/png.c src/video_gl.c src/ui.c src/menu.c src/settings.c ${RUNTIME_SOURCES} ${GEN_CODE} ${GEN_PATCH})
+add_executable(shangon src/main.c src/input.c src/persist.c src/sha1.c src/overlay.c src/png.c src/video_gl.c src/ui.c src/menu.c src/settings.c ${RUNTIME_SOURCES} ${GAME_SOURCES})
+if(SHANGON_RUNTIME_TRANSLATION)
+  target_compile_definitions(shangon PRIVATE RT_TRANSLATE)
+endif()
 target_include_directories(shangon PRIVATE src third_party/chips)
 set_target_properties(shangon PROPERTIES WIN32_EXECUTABLE TRUE)   # no console window on Windows
 target_compile_options(shangon PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall>)

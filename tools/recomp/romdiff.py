@@ -23,7 +23,7 @@ def main():
         sys.exit(f"romdiff: {len(diff)} bytes changed; overlays must not move original code or data")
     runs = []
     for i in diff:
-        if runs and i <= runs[-1][1] + 8:
+        if runs and i == runs[-1][1] + 1:       # only changed bytes, none of the original
             runs[-1][1] = i
         else:
             runs.append([i, i])

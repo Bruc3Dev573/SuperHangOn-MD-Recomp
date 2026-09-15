@@ -16,3 +16,4 @@ tools/sdl2-mingw/
 # local files
 .DS_Store
 .claude/
+shangon.cache

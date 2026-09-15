@@ -49,6 +49,9 @@
 #include "persist.h"
 #include "sha1.h"
 #include "rompatch.h"
+#ifdef RT_TRANSLATE
+#include "rt_translate.h"
+#endif
 #include "overlay.h"
 #include "png.h"
 #include "video.h"
@@ -606,6 +609,14 @@ int main(int argc, char **argv)
   for (int i = 0; i < rom_patch_count; i++)
     if (rom_patches[i].addr + rom_patches[i].len <= md.rom_size)
       memcpy(md.rom + rom_patches[i].addr, rom_patches[i].bytes, rom_patches[i].len);
+#ifdef RT_TRANSLATE
+  /* the game code: decoded from the ROM now, or read from the cache made at
+   * the first start */
+  char cache[1100];
+  snprintf(cache, sizeof cache, "%sshangon.cache", data);
+  if (rt_translate_init(md.rom, md.rom_size, cache) != 0)
+    return fatal("%s: the game code could not be decoded.", rom);
+#endif
 
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
     return fatal("SDL_Init: %s", SDL_GetError());

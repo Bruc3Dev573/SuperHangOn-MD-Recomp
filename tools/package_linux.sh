@@ -1,16 +1,15 @@
 #!/bin/sh
-# Personal Linux binary package of the PC port (x86_64 or the host architecture).
+# Linux binary package of the PC port (x86_64 or the host architecture).
 #
 #   tools/package_linux.sh [--30hz]
 #
 # Produces build/dist/superhangon-linux-ARCH.tar.gz with shangon, the
 # Nuked-OPN2 shared library (LGPL-2.1, replaceable, in lib/) and the licence
-# files. The executable contains game code recompiled from your ROM: the package
-# is for your own machines and must not be shared. The ROM itself is not
-# included; the game looks for it next to the executable (baserom.md).
+# files. It contains no game code and no ROM data: the game code is translated
+# from the player's ROM, next to the executable (baserom.md), when it starts.
 #
-# Requires what tools/build_port.sh requires (run that once first). The target
-# machines need SDL2 (Debian/Ubuntu: libsdl2-2.0-0).
+# Requires what tools/build_port.sh requires. The target machines need SDL2
+# (Debian/Ubuntu: libsdl2-2.0-0).
 set -e
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
@@ -18,8 +17,6 @@ cd "$root"
 patches="patches/pc60;patches/relax"
 [ "$1" = "--30hz" ] && patches=""
 
-[ -f rom/baserom.md ] || { echo "package_linux: run tools/build_port.sh --rom PATH first" >&2; exit 1; }
-[ -x tools/bin/vasmm68k_mot ] || { echo "package_linux: run tools/build_port.sh first (fetches vasm)" >&2; exit 1; }
 
 arch=$(uname -m)
 name=superhangon-linux-$arch
@@ -27,7 +24,7 @@ stage=build/dist/$name
 rm -rf "$stage" "build/dist/$name.tar.gz"
 mkdir -p "$stage"
 
-cmake -S port -B build/package -DCMAKE_BUILD_TYPE=Release -DSHANGON_OPN2_SHARED=ON -DSHANGON_PORTABLE=ON "-DSHANGON_PATCHES=$patches" >/dev/null
+cmake -S port -B build/package -DCMAKE_BUILD_TYPE=Release -DSHANGON_OPN2_SHARED=ON -DSHANGON_PORTABLE=ON -DSHANGON_RUNTIME_TRANSLATION=ON "-DSHANGON_PATCHES=$patches" >/dev/null
 cmake --build build/package -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)" --target shangon
 cmake --install build/package --prefix "$stage" --component game >/dev/null
 strip "$stage/shangon" 2>/dev/null || true
@@ -38,10 +35,10 @@ cp port/third_party/nuked-opn2/ym3438.c port/third_party/nuked-opn2/ym3438.h "$s
 cp port/third_party/chips/LICENSE port/third_party/chips/SOURCE "$stage/licenses/chips/"
 
 cat > "$stage/README.txt" <<EOF
-Super Hang-On (Mega Drive) PC port - personal build ($(date +%Y-%m-%d), $(git rev-parse --short HEAD), ${patches:-30 Hz})
+Super Hang-On (Mega Drive) PC port ($(date +%Y-%m-%d), $(git rev-parse --short HEAD), ${patches:-30 Hz})
 
-This package contains game code recompiled from your own ROM. It is for your
-own machines only: do not share it.
+This package contains no game code and no ROM data: you need your own ROM.
+At the first start the game code is translated from it (shangon.cache).
 
 Setup
   1. Copy your "Super Hang-On (Japan, USA) (En,Ja)" ROM into this folder,

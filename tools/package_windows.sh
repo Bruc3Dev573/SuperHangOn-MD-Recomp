@@ -1,14 +1,15 @@
 #!/bin/sh
-# Personal Windows (x86_64) package of the PC port, cross-compiled on Linux.
+# Windows (x86_64) package of the PC port, cross-compiled on Linux.
 #
 #   tools/package_windows.sh [--30hz]
 #
 # Produces build/dist/superhangon-windows-x86_64.zip: shangon.exe, SDL2.dll,
 # libnuked_opn2.dll (LGPL-2.1, replaceable, source included), README and
-# licences. The executable contains game code recompiled from your ROM: the
-# package is for your own machines and must not be shared.
+# licences. It contains no game code and no ROM data: the game code is
+# translated from the player's ROM (baserom.md next to shangon.exe) when it
+# starts.
 #
-# Requires: tools/build_port.sh run once (ROM, vasm), MinGW-w64
+# Requires: cmake, MinGW-w64
 # (Debian/Ubuntu: sudo apt install gcc-mingw-w64-x86-64), curl, zip.
 set -e
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -21,8 +22,6 @@ patches="patches/pc60;patches/relax"
 [ "$1" = "--30hz" ] && patches=""
 
 fail() { echo "package_windows: $*" >&2; exit 1; }
-[ -f rom/baserom.md ] || fail "run tools/build_port.sh --rom PATH first"
-[ -x tools/bin/vasmm68k_mot ] || fail "run tools/build_port.sh first (fetches vasm)"
 command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1 || fail "missing MinGW-w64 (sudo apt install gcc-mingw-w64-x86-64)"
 command -v zip >/dev/null 2>&1 || fail "missing zip"
 
@@ -43,7 +42,7 @@ mkdir -p "$stage"
 
 cmake -S port -B build/win64 -DCMAKE_TOOLCHAIN_FILE="$root/port/cmake/mingw-w64-x86_64.cmake" \
   -DSDL2_MINGW_ROOT="$root/$sdl" -DSDL2_DIR="$root/$sdl/lib/cmake/SDL2" \
-  -DCMAKE_BUILD_TYPE=Release -DSHANGON_OPN2_SHARED=ON "-DSHANGON_PATCHES=$patches" >/dev/null
+  -DCMAKE_BUILD_TYPE=Release -DSHANGON_OPN2_SHARED=ON -DSHANGON_RUNTIME_TRANSLATION=ON "-DSHANGON_PATCHES=$patches" >/dev/null
 cmake --build build/win64 -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)" --target shangon
 cmake --install build/win64 --prefix "$stage" --component game >/dev/null
 x86_64-w64-mingw32-strip "$stage/shangon.exe" "$stage/libnuked_opn2.dll"
@@ -58,10 +57,10 @@ for f in LICENSE.txt README-SDL.txt; do
 done
 
 sed 's/$/\r/' > "$stage/README.txt" <<EOF
-Super Hang-On (Mega Drive) PC port - personal build ($(date +%Y-%m-%d), $(git rev-parse --short HEAD), ${patches:-30 Hz})
+Super Hang-On (Mega Drive) PC port ($(date +%Y-%m-%d), $(git rev-parse --short HEAD), ${patches:-30 Hz})
 
-This package contains game code recompiled from your own ROM. It is for your
-own machines only: do not share it.
+This package contains no game code and no ROM data: you need your own ROM.
+At the first start the game code is translated from it (shangon.cache).
 
 Setup
   1. Copy your "Super Hang-On (Japan, USA) (En,Ja)" ROM into this folder,
