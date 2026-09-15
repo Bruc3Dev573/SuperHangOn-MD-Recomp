@@ -2,9 +2,8 @@
  * Super Hang-On PC port: SDL2 frontend.
  *
  *   shangon [--rom PATH] [--scale N] [--window W H] [--fullscreen] [--vsync | --no-vsync]
- *           [--crt off|scanlines|aperture|slot|shadow] [--render-height N]
- *           [--scale-mode integer|fit|stretch] [--square-pixels] [--format 4:3|16:9|21:9]
- *           [--no-gl] [--no-fps]
+ *           [--fps-limit 60|120] [--crt off|scanlines|aperture|slot|shadow] [--render-height N]
+ *           [--scale-mode integer|fit|stretch] [--square-pixels] [--no-gl] [--no-fps]
  *           [--mute] [--frames N] [--input FILE] [--screenshot FRAME[-LAST] FILE]
  *           [--no-rom-check] [--data DIR]
  *
@@ -18,12 +17,13 @@
  * presses, lines "first_frame last_frame BUTTONS" (pad: U D L R A B C S;
  * hotkeys: 5 save state, 8 load state, W rewind, M settings menu).
  *
- * The recompiled game runs from the reset vector (rt_start); at every video
- * frame the runtime calls on_frame(), which renders the VDP state, presents
- * it, queues the frame's sound, polls input and paces the loop to 60 frames
- * per second. The sound is resampled from the native YM2612 rate to the device
- * rate; the ratio follows the device queue level so that sound and video,
- * driven by different clocks, stay in step without gaps or growing latency.
+ * The recompiled game runs from the reset vector (rt_start); at every
+ * selected game frame the runtime calls on_frame(), which renders the VDP
+ * state, presents it, queues that frame's sound, polls input and paces the
+ * loop to the selected 60/120 frames per second. The sound is resampled
+ * from the native YM2612 rate to the device rate; the ratio follows the
+ * device queue level so that sound and video, driven by different clocks,
+ * stay in step without gaps or growing latency.
  *
  * Controls are configured in controls.ini (written with the defaults on the
  * first run): arrows / D-pad / left stick, Z X C = A B C (controller X A B and
@@ -59,7 +59,6 @@
 #include "ui.h"
 #include "menu.h"
 
-#define FPS 60
 #define ROM_SHA1 "ecfd7b3bf4dcbee472ddf2f9cdbe968a05b814e0"
 
 static SDL_Window *window;
@@ -68,17 +67,22 @@ static int use_gl;
 static AppSettings settings;
 static char settings_path[1100];
 static int cli_vsync = -1;           /* --vsync / --no-vsync */
+static int game_fps = GAME_FPS_60;
 static int refresh_hz;
 static SDL_Texture *texture;
 static int texture_w;
 static int use_vsync;
+#ifndef __EMSCRIPTEN__
+static int pace_game;
 static Uint64 next_frame;
+#endif
 static Uint64 perf_freq;
 static long frame_count, frame_limit;
 static SDL_AudioDeviceID audio_dev;
 static int audio_rate;
 static Resampler resampler;
 static double audio_step;             /* nominal input frames per output frame */
+static double audio_level = -1;
 static Uint64 start_time;
 
 #define SCRIPT_SAVE 0x100
@@ -141,10 +145,38 @@ static void apply_fullscreen(void)
     apply_window();
 }
 
+static void set_audio_rate(void)
+{
+  if (!audio_rate)
+    return;
+  double in_per_second = (double)(MD_MCYCLES_PER_LINE * MD_LINES_PER_FRAME) / 1008.0 * game_fps;
+  audio_step = in_per_second / audio_rate;
+  resample_init(&resampler, in_per_second, audio_rate);
+}
+
+static void apply_fps_limit(void)
+{
+  game_fps = settings.fps_limit == GAME_FPS_120 ? GAME_FPS_120 : GAME_FPS_60;
+  settings.fps_limit = game_fps;
+#ifndef __EMSCRIPTEN__
+  next_frame = 0;
+#endif
+  rt_set_fps(game_fps);
+  if (audio_dev) {
+    SDL_ClearQueuedAudio(audio_dev);
+    audio_level = -1;
+    set_audio_rate();
+  }
+}
+
 static void apply_vsync(void)
 {
+  int auto_vsync = refresh_hz == game_fps;
   use_vsync = cli_vsync >= 0 ? cli_vsync :
-              settings.vsync == VSYNC_ON ? 1 : settings.vsync == VSYNC_OFF ? 0 : refresh_hz == FPS;
+              settings.vsync == VSYNC_ON ? 1 : settings.vsync == VSYNC_OFF ? 0 : auto_vsync;
+#ifndef __EMSCRIPTEN__
+  pace_game = !use_vsync || (refresh_hz > 0 && refresh_hz != game_fps);
+#endif
   if (use_gl)
     SDL_GL_SetSwapInterval(use_vsync);
 }
@@ -157,6 +189,9 @@ static void toggle_fullscreen(void)
 }
 
 static int req_save, req_load, rewinding, menu_request;
+#ifdef __EMSCRIPTEN__
+static int browser_menu_active;
+#endif
 static Uint64 title_until;
 
 static void show_message(const char *text)
@@ -248,11 +283,11 @@ static void present(void)
   SDL_RenderPresent(renderer);
 }
 
-/* without vsync: sleep until the next 1/60 s boundary (coarse sleep, then spin) */
+/* without a matching display sync: sleep until the next selected game frame */
 #ifndef __EMSCRIPTEN__
 static void pace(void)
 {
-  Uint64 period = perf_freq / FPS;
+  Uint64 period = perf_freq / game_fps;
   Uint64 now = SDL_GetPerformanceCounter();
   if (!next_frame || now > next_frame + period * 4)
     next_frame = now;                                 /* start, or fell far behind */
@@ -283,10 +318,7 @@ static void open_audio(void)
     return;
   }
   audio_rate = have.freq;
-  /* the emulated frame (262 lines) is played in one 1/60 s video frame */
-  double in_per_second = (double)(MD_MCYCLES_PER_LINE * MD_LINES_PER_FRAME) / 1008.0 * FPS;
-  audio_step = in_per_second / audio_rate;
-  resample_init(&resampler, in_per_second, audio_rate);
+  set_audio_rate();
   SDL_PauseAudioDevice(audio_dev, 0);
 }
 
@@ -301,16 +333,16 @@ static void queue_audio(void)
       native[i] = (int16_t)(native[i] * settings.volume / 100);
   /* proportional rate control on the smoothed queue level: 1% per target
    * latency of error, at most 2% */
-  static double level = -1;
+  /* queue level is reset when the selected game rate changes */
   double target = audio_rate * AUDIO_LATENCY;
   double queued = SDL_GetQueuedAudioSize(audio_dev) / 4.0;
   if (queued > audio_rate * 0.3) {                  /* stalled (window moved, suspend...) */
     SDL_ClearQueuedAudio(audio_dev);
     queued = 0;
-    level = -1;
+    audio_level = -1;
   }
-  level = level < 0 ? queued : level * 0.95 + queued * 0.05;
-  double adjust = 0.01 * (level - target) / target;
+  audio_level = audio_level < 0 ? queued : audio_level * 0.95 + queued * 0.05;
+  double adjust = 0.01 * (audio_level - target) / target;
   if (adjust > 0.02) adjust = 0.02;
   if (adjust < -0.02) adjust = -0.02;
   resample_set_step(&resampler, audio_step * (1 + adjust));
@@ -376,6 +408,7 @@ static void fps_update(Uint64 frame_start)
   }
 }
 
+#ifndef __EMSCRIPTEN__
 /* the settings menu runs its own loop: the game is paused meanwhile */
 static void run_menu(void)
 {
@@ -398,9 +431,11 @@ static void run_menu(void)
     scripted_prev = scripted;
     int apply = 0;
     int state = menu_update(&settings, input_pad() | (script_buttons() & 0xff), back, &apply);
+    if (apply & APPLY_FPS)
+      apply_fps_limit();
     if (apply & APPLY_FULLSCREEN) apply_fullscreen();
     if (apply & APPLY_WINDOW) apply_window();
-    if (apply & APPLY_VSYNC) apply_vsync();
+    if (apply & (APPLY_VSYNC | APPLY_FPS)) apply_vsync();
     if (apply & APPLY_SAVE) settings_save(&settings, settings_path);
     if (state == MENU_QUIT) {
       settings_save(&settings, settings_path);
@@ -422,7 +457,7 @@ static void run_menu(void)
     if (cap)
       write_shot(cap, cw, ch, cw);
 #ifndef __EMSCRIPTEN__
-    if (!use_vsync)
+    if (pace_game)
       pace();
 #endif
     if (script_len)
@@ -433,6 +468,52 @@ static void run_menu(void)
   /* avoid a frame rate hiccup on the counter */
   fps.last_frame = 0;
 }
+#endif
+#ifdef __EMSCRIPTEN__
+static int browser_menu_tick(void)
+{
+  if (!browser_menu_active)
+    return 0;
+  SDL_Event e;
+  while (SDL_PollEvent(&e)) {
+    if (e.type == SDL_QUIT) {
+      settings_save(&settings, settings_path);
+      exit(0);
+    }
+    input_event(&e);
+  }
+  int apply = 0;
+  int back = input_hotkey_pressed(HOTKEY_MENU) | input_hotkey_pressed(HOTKEY_QUIT);
+  int state = menu_update(&settings, input_pad(), back, &apply);
+  if (apply & APPLY_FPS)
+    apply_fps_limit();
+  if (apply & APPLY_FULLSCREEN) apply_fullscreen();
+  if (apply & APPLY_WINDOW) apply_window();
+  if (apply & (APPLY_VSYNC | APPLY_FPS)) apply_vsync();
+  if (apply & APPLY_SAVE) settings_save(&settings, settings_path);
+  if (state == MENU_QUIT) {
+    settings_save(&settings, settings_path);
+    exit(0);
+  }
+  if (state == MENU_RESET) {
+    persist_request_reset();
+    browser_menu_active = 0;
+    rt_set_fps(game_fps);
+    fps.last_frame = 0;
+    return 1;
+  }
+  if (state == MENU_CLOSED) {
+    browser_menu_active = 0;
+    rt_set_fps(game_fps);
+    fps.last_frame = 0;
+    return 1;
+  }
+  ui_clear();
+  menu_draw(&settings);
+  present();
+  return 1;
+}
+#endif
 
 static void on_frame(M68K *c)
 {
@@ -468,7 +549,7 @@ static void on_frame(M68K *c)
   }
   queue_audio();
 #ifndef __EMSCRIPTEN__
-  if (!use_vsync)
+  if (pace_game)
     pace();
 #endif
   poll_events();
@@ -476,7 +557,16 @@ static void on_frame(M68K *c)
     settings.show_fps = !settings.show_fps;
     settings_save(&settings, settings_path);
   }
-#ifndef __EMSCRIPTEN__
+#ifdef __EMSCRIPTEN__
+  if (menu_request && use_gl) {
+    menu_open();
+    browser_menu_active = 1;
+    if (audio_dev) {
+      SDL_ClearQueuedAudio(audio_dev);
+      audio_level = -1;
+    }
+  }
+#else
   if (menu_request && use_gl)
     run_menu();
 #endif
@@ -505,7 +595,7 @@ static int fatal(const char *fmt, ...)
 static void usage(void)
 {
   fprintf(stderr, "usage: shangon [--rom PATH] [--scale N] [--window W H] [--fullscreen] [--vsync | --no-vsync]\n"
-                  "               [--crt off|scanlines|aperture|slot|shadow] [--render-height N]\n"
+                  "               [--fps-limit 60|120] [--crt off|scanlines|aperture|slot|shadow] [--render-height N]\n"
                   "               [--scale-mode integer|fit|stretch] [--square-pixels] [--no-gl] [--no-fps]\n"
                   "               [--mute] [--frames N] [--input FILE] [--screenshot FRAME FILE]\n"
                   "               [--no-rom-check] [--data DIR]\n");
@@ -547,6 +637,12 @@ int main(int argc, char **argv)
     else if (!strcmp(argv[i], "--fullscreen")) fullscreen = 1;
     else if (!strcmp(argv[i], "--vsync")) cli_vsync = 1;
     else if (!strcmp(argv[i], "--no-vsync")) cli_vsync = 0;
+    else if (!strcmp(argv[i], "--fps-limit") && i + 1 < argc) {
+      int fps = atoi(argv[++i]);
+      if (fps != GAME_FPS_60 && fps != GAME_FPS_120)
+        usage();
+      settings.fps_limit = fps;
+    }
     else if (!strcmp(argv[i], "--mute")) mute = 1;
     else if (!strcmp(argv[i], "--no-fps")) settings.show_fps = 0;
     else if (!strcmp(argv[i], "--no-gl")) no_gl = 1;
@@ -588,6 +684,7 @@ int main(int argc, char **argv)
     else if (!strcmp(argv[i], "--frames") && i + 1 < argc) frame_limit = atol(argv[++i]);
     else usage();
   }
+  apply_fps_limit();
   char rom_default[1100];
   if (!rom) {
     char dir[1024];
@@ -701,6 +798,10 @@ int main(int argc, char **argv)
   rt_frame_end_callback = on_frame_end;
   start_time = SDL_GetPerformanceCounter();
   rt_frame_callback = on_frame;
+#ifdef __EMSCRIPTEN__
+  rt_render_callback = present;
+  rt_menu_tick_callback = browser_menu_tick;
+#endif
   M68K c;
   rt_start(&c);
   return 0;

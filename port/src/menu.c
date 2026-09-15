@@ -12,7 +12,7 @@ typedef struct {
 } Item;
 
 enum {
-  ID_RESUME, ID_RESET, ID_QUIT, ID_DISPLAY, ID_WINDOW, ID_RENDER, ID_SCALING, ID_ASPECT, ID_FORMAT, ID_VSYNC, ID_FPS,
+  ID_RESUME, ID_RESET, ID_QUIT, ID_DISPLAY, ID_WINDOW, ID_RENDER, ID_SCALING, ID_ASPECT, ID_FORMAT, ID_VSYNC, ID_FPS_LIMIT, ID_FPS,
   ID_FILTER, ID_TVL, ID_SCANLINES, ID_MASK, ID_GLOW, ID_CURVATURE, ID_VIGNETTE, ID_SHARPNESS, ID_BRIGHTNESS,
   ID_VOLUME, ID_NONE
 };
@@ -27,6 +27,7 @@ static const Item items[] = {
   {KIND_CHOICE, "ASPECT RATIO", ID_ASPECT},
   {KIND_CHOICE, "SCREEN FORMAT", ID_FORMAT},
   {KIND_CHOICE, "V-SYNC", ID_VSYNC},
+  {KIND_CHOICE, "GAME FPS", ID_FPS_LIMIT},
   {KIND_CHOICE, "FPS COUNTER", ID_FPS},
   {KIND_HEADER, "CRT", ID_NONE},
   {KIND_CHOICE, "FILTER", ID_FILTER},
@@ -88,6 +89,9 @@ static int change(AppSettings *s, int id, int dir)
     case ID_ASPECT: s->video.aspect_43 = !s->video.aspect_43; return APPLY_WINDOW;
     case ID_FORMAT: s->video.screen_format = wrap(s->video.screen_format + dir, FORMAT_COUNT); return 0;
     case ID_VSYNC: s->vsync = wrap(s->vsync + dir, VSYNC_COUNT); return APPLY_VSYNC;
+    case ID_FPS_LIMIT:
+      s->fps_limit = s->fps_limit == GAME_FPS_120 ? GAME_FPS_60 : GAME_FPS_120;
+      return APPLY_FPS;
     case ID_FPS: s->show_fps = !s->show_fps; return 0;
     case ID_FILTER: s->video.crt = wrap(s->video.crt + dir, CRT_COUNT); return 0;
     case ID_TVL: {
@@ -166,6 +170,7 @@ static const char *value_text(const AppSettings *s, int id, char *buf, size_t n)
       return formats[s->video.screen_format];
     }
     case ID_VSYNC: return vsync[s->vsync];
+    case ID_FPS_LIMIT: snprintf(buf, n, "%d", s->fps_limit); return buf;
     case ID_FPS: return s->show_fps ? "ON" : "OFF";
     case ID_FILTER: return filters[s->video.crt];
     case ID_TVL:

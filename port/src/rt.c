@@ -33,10 +33,14 @@ void (*rt_frame_end_callback)(M68K *c, uint32_t resume_pc);
 #ifndef __EMSCRIPTEN__
 static jmp_buf top_loop;
 #else
+void (*rt_render_callback)(void);
+int (*rt_menu_tick_callback)(void);
 static M68K *loop_cpu;
 static uint32_t loop_pc;
 static int frame_done;
 static int resume_pending;
+static int rt_target_fps = 60;
+static double rt_next_frame_ms;
 #endif
 static uint32_t jump_pc;
 
@@ -198,10 +202,19 @@ void rt_wait_point(M68K *c, uint32_t addr)
   frame(c, addr);
 }
 
-#ifdef __EMSCRIPTEN__
-static void rt_tick(void *arg)
+void rt_set_fps(int fps)
 {
-  M68K *c = arg;
+#ifdef __EMSCRIPTEN__
+  rt_target_fps = fps == 120 ? 120 : 60;
+  rt_next_frame_ms = 0;
+#else
+  (void)fps;
+#endif
+}
+
+#ifdef __EMSCRIPTEN__
+static void run_frame(M68K *c)
+{
   frame_done = 0;
   for (;;) {
     loop_pc = run_block(c, loop_pc) & 0xffffff;
@@ -215,12 +228,30 @@ static void rt_tick(void *arg)
     }
     if (frame_done)
       return;
-    if (rt_cycles > HANG_GUARD_CYCLES) {
+    if (rt_cycles > HANG_GUARD_CYCLES)
       frame(c, loop_pc);
-      if (frame_done)
-        return;
-    }
   }
+}
+
+static void rt_tick(void *arg)
+{
+  M68K *c = arg;
+  if (rt_menu_tick_callback && rt_menu_tick_callback())
+    return;
+  double now = emscripten_get_now();
+  double period = 1000.0 / rt_target_fps;
+  if (!rt_next_frame_ms)
+    rt_next_frame_ms = now;
+  int frames = 0;
+  while (now + 0.25 >= rt_next_frame_ms && frames < 4) {
+    rt_next_frame_ms += period;
+    run_frame(c);
+    frames++;
+  }
+  if (now > rt_next_frame_ms + period * 8)
+    rt_next_frame_ms = now + period;
+  if (!frames && rt_render_callback)
+    rt_render_callback();
 }
 #endif
 
@@ -236,6 +267,7 @@ void rt_start(M68K *c)
 #ifdef __EMSCRIPTEN__
   loop_cpu = c;
   loop_pc = m68k_read32(4) & 0xffffff;
+  rt_next_frame_ms = 0;
   emscripten_set_main_loop_arg(rt_tick, loop_cpu, 0, 1);
 #else
   static uint32_t pc;

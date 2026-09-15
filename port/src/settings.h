@@ -6,6 +6,7 @@
 #include "video.h"
 
 enum { VSYNC_AUTO, VSYNC_ON, VSYNC_OFF, VSYNC_COUNT };
+enum { GAME_FPS_60 = 60, GAME_FPS_120 = 120 };
 
 typedef struct { int w, h; const char *label; } WindowPreset;
 extern const WindowPreset window_presets[];
@@ -19,6 +20,7 @@ typedef struct {
   int window_preset;        /* index into window_presets */
   int render_index;         /* index into render_heights (0 = window) */
   int vsync;                /* VSYNC_* */
+  int fps_limit;            /* game simulation and audio frames per second */
   int show_fps;
   int volume;               /* 0..100 */
 } AppSettings;

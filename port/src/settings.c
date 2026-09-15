@@ -26,6 +26,7 @@ void settings_default(AppSettings *s)
   s->window_preset = 2;
   s->render_index = 0;
   s->vsync = VSYNC_AUTO;
+  s->fps_limit = GAME_FPS_60;
   s->show_fps = 1;
   s->volume = 100;
 }
@@ -39,6 +40,7 @@ INT_FIELD(fullscreen, fullscreen)
 INT_FIELD(window, window_preset)
 INT_FIELD(render, render_index)
 INT_FIELD(vsync, vsync)
+INT_FIELD(fps_limit, fps_limit)
 INT_FIELD(fps, show_fps)
 INT_FIELD(volume, volume)
 INT_FIELD(scale, video.scale_mode)
@@ -56,7 +58,7 @@ FLT_FIELD(brightness, video.brightness)
 
 static const Entry entries[] = {
   {"fullscreen", 0, f_fullscreen}, {"window_preset", 0, f_window}, {"render_resolution", 0, f_render},
-  {"vsync", 0, f_vsync}, {"show_fps", 0, f_fps}, {"volume", 0, f_volume},
+  {"vsync", 0, f_vsync}, {"fps_limit", 0, f_fps_limit}, {"show_fps", 0, f_fps}, {"volume", 0, f_volume},
   {"screen_format", 0, f_format}, {"scaling", 0, f_scale}, {"aspect_4_3", 0, f_aspect}, {"crt_filter", 0, f_crt}, {"crt_mask_tvl", 0, f_tvl},
   {"crt_scanlines", 1, f_scanlines}, {"crt_mask", 1, f_mask}, {"crt_glow", 1, f_glow},
   {"crt_curvature", 1, f_curvature}, {"crt_vignette", 1, f_vignette}, {"crt_sharpness", 1, f_sharpness},
@@ -87,6 +89,8 @@ void settings_load(AppSettings *s, const char *path)
   s->window_preset = clampi(s->window_preset, 0, window_preset_count - 1);
   s->render_index = clampi(s->render_index, 0, render_height_count - 1);
   s->vsync = clampi(s->vsync, 0, VSYNC_COUNT - 1);
+  if (s->fps_limit != GAME_FPS_120)
+    s->fps_limit = GAME_FPS_60;
   s->volume = clampi(s->volume, 0, 100);
   s->video.scale_mode = clampi(s->video.scale_mode, 0, SCALE_COUNT - 1);
   s->video.crt = clampi(s->video.crt, 0, CRT_COUNT - 1);
