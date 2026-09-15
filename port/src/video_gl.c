@@ -19,6 +19,13 @@
 #else
 #define GLAPI
 #endif
+#ifdef __EMSCRIPTEN__
+#define GLSL_VERSION "#version 300 es\nprecision highp float;\nprecision highp int;\n"
+#define GL_PIXEL_FORMAT GL_RGBA
+#else
+#define GLSL_VERSION "#version 330 core\n"
+#define GL_PIXEL_FORMAT GL_BGRA
+#endif
 
 typedef unsigned int GLenum, GLuint, GLbitfield;
 typedef int GLint, GLsizei;
@@ -120,10 +127,31 @@ static int scene_w = -1;
 #define ATLAS_PAD 2
 #define ATLAS_MAX 512
 static struct { int id, x, y; } atlas[ATLAS_MAX];
+#ifdef __EMSCRIPTEN__
+static uint8_t pixel_pack[1024 * 1024 * 4];
+static const void *pixel_data(const uint32_t *src, size_t count)
+{
+  for (size_t i = 0; i < count; i++) {
+    uint32_t p = src[i];
+    pixel_pack[i * 4 + 0] = (uint8_t)(p >> 16);
+    pixel_pack[i * 4 + 1] = (uint8_t)(p >> 8);
+    pixel_pack[i * 4 + 2] = (uint8_t)p;
+    pixel_pack[i * 4 + 3] = (uint8_t)(p >> 24);
+  }
+  return pixel_pack;
+}
+#else
+static const void *pixel_data(const uint32_t *src, size_t count)
+{
+  (void)count;
+  return src;
+}
+#endif
+
 static int atlas_count, atlas_x, atlas_y, atlas_row_h;
 
 static const char *vs_src =
-  "#version 330 core\n"
+  GLSL_VERSION
   "out vec2 vUv;\n"
   "void main() {\n"
   "  vec2 p = vec2((gl_VertexID == 1) ? 3.0 : -1.0, (gl_VertexID == 2) ? 3.0 : -1.0);\n"
@@ -133,7 +161,7 @@ static const char *vs_src =
 
 /* road quads: pos in pixels of the wide picture (x from viewX0), top row first */
 static const char *vs_flat_src =
-  "#version 330 core\n"
+  GLSL_VERSION
   "layout(location = 0) in vec2 pos;\n"
   "layout(location = 1) in vec3 colour;\n"
   "uniform float viewX0, viewW;\n"
@@ -144,14 +172,14 @@ static const char *vs_flat_src =
   "}\n";
 
 static const char *fs_flat_src =
-  "#version 330 core\n"
+  GLSL_VERSION
   "in vec3 vColour;\n"
   "out vec4 fragColor;\n"
   "void main() { fragColor = vec4(vColour, 1.0); }\n";
 
 /* sprite images drawn pixel for pixel: uv in atlas texels */
 static const char *vs_sprite_src =
-  "#version 330 core\n"
+  GLSL_VERSION
   "layout(location = 0) in vec2 pos;\n"
   "layout(location = 1) in vec2 uv;\n"
   "uniform float viewX0, viewW;\n"
@@ -162,7 +190,7 @@ static const char *vs_sprite_src =
   "}\n";
 
 static const char *fs_sprite_src =
-  "#version 330 core\n"
+  GLSL_VERSION
   "uniform sampler2D atlas;\n"
   "in vec2 vUv;\n"
   "out vec4 fragColor;\n"
@@ -174,7 +202,7 @@ static const char *fs_sprite_src =
 
 /* CRT / pixel shader: draws the source picture into rectPos/rectSize of the target */
 static const char *fs_crt_src =
-  "#version 330 core\n"
+  GLSL_VERSION
   "uniform sampler2D src;\n"
   "uniform vec2 srcSize, rectPos, rectSize;\n"
   "uniform int crt;\n"
@@ -303,7 +331,7 @@ static const char *fs_crt_src =
 
 /* texture to rectangle, used for the offscreen target and the UI layer */
 static const char *fs_blit_src =
-  "#version 330 core\n"
+  GLSL_VERSION
   "uniform sampler2D src;\n"
   "uniform vec2 rectPos, rectSize;\n"
   "out vec4 fragColor;\n"
@@ -546,7 +574,7 @@ static void upload_layer(GLuint tex, const uint32_t *pixels, int w)
   for (int y = 0; y < 224; y++)
     memcpy(packed + y * w, pixels + y * RENDER_WIDE_MAX, (size_t)w * sizeof *pixels);
   gl.BindTexture(GL_TEXTURE_2D, tex);
-  gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, 224, 0, GL_BGRA, GL_UNSIGNED_BYTE, packed);
+  gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, 224, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, pixel_data(packed, (size_t)w * 224));
   texture_params(GL_NEAREST);
 }
 
@@ -570,10 +598,11 @@ static int atlas_place(const Scene *scene, int rect[][2])
           break;
         }
         gl.BindTexture(GL_TEXTURE_2D, tex_atlas);
-        gl.TexSubImage2D(GL_TEXTURE_2D, 0, atlas_x, atlas_y, im->w, im->h, GL_BGRA, GL_UNSIGNED_BYTE, im->pixels);
         atlas[k].id = im->id;
         atlas[k].x = atlas_x;
         atlas[k].y = atlas_y;
+        gl.TexSubImage2D(GL_TEXTURE_2D, 0, atlas_x, atlas_y, im->w, im->h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE,
+                         pixel_data(im->pixels, (size_t)im->w * im->h));
         atlas_count++;
         atlas_x += im->w + ATLAS_PAD;
         if (im->h + ATLAS_PAD > atlas_row_h) atlas_row_h = im->h + ATLAS_PAD;
@@ -682,12 +711,13 @@ void video_present(const uint32_t *frame, int w, int h, int stride, const VideoS
     memcpy(packed + y * w, frame + y * stride, (size_t)w * 4);
   gl.BindTexture(GL_TEXTURE_2D, tex_game);
   if (w != game_tex_w || h != game_tex_h) {
-    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
+    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, NULL);
     game_tex_w = w;
     game_tex_h = h;
   }
   texture_params(GL_NEAREST);
-  gl.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_BGRA, GL_UNSIGNED_BYTE, packed);
+  gl.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE,
+                   pixel_data(packed, (size_t)w * h));
 
   int dw, dh;
   SDL_GL_GetDrawableSize(win, &dw, &dh);
@@ -746,13 +776,14 @@ void video_present(const uint32_t *frame, int w, int h, int stride, const VideoS
   if (ui) {
     gl.BindTexture(GL_TEXTURE_2D, tex_ui);
     if (ui_w != ui_tex_w || ui_h != ui_tex_h) {
-      gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, ui_w, ui_h, 0, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
+      gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, ui_w, ui_h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, NULL);
       ui_tex_w = ui_w;
       ui_tex_h = ui_h;
     }
     texture_params(GL_NEAREST);
-    gl.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ui_w, ui_h, GL_BGRA, GL_UNSIGNED_BYTE, ui);
     /* UI layer over the picture rectangle; rows are uploaded top first */
+    gl.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ui_w, ui_h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE,
+                     pixel_data(ui, (size_t)ui_w * ui_h));
     gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
     gl.Viewport(0, 0, dw, dh);
     /* over the 4:3 part of a wide picture */
@@ -795,15 +826,22 @@ static void capture(int dw, int dh)
       return;
   }
   gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
-  gl.ReadPixels(0, 0, dw, dh, GL_BGRA, GL_UNSIGNED_BYTE, capture_buf);
+  gl.ReadPixels(0, 0, dw, dh, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, capture_buf);
   for (int y = 0; y < dh / 2; y++)                  /* bottom row first -> top row first */
     for (int x = 0; x < dw; x++) {
       uint32_t t = capture_buf[y * dw + x];
       capture_buf[y * dw + x] = capture_buf[(dh - 1 - y) * dw + x];
       capture_buf[(dh - 1 - y) * dw + x] = t;
     }
+#ifdef __EMSCRIPTEN__
+  for (size_t i = 0; i < need; i++) {
+    uint8_t *p = (uint8_t *)&capture_buf[i];
+    capture_buf[i] = (uint32_t)p[0] << 16 | (uint32_t)p[1] << 8 | p[2];
+  }
+#else
   for (size_t i = 0; i < need; i++)
     capture_buf[i] &= 0xffffff;
+#endif
   capture_w = dw;
   capture_h = dh;
   capture_ready = 1;

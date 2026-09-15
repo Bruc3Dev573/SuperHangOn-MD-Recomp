@@ -249,6 +249,7 @@ static void present(void)
 }
 
 /* without vsync: sleep until the next 1/60 s boundary (coarse sleep, then spin) */
+#ifndef __EMSCRIPTEN__
 static void pace(void)
 {
   Uint64 period = perf_freq / FPS;
@@ -265,6 +266,7 @@ static void pace(void)
       SDL_Delay((Uint32)(left_ms - 2));
   }
 }
+#endif
 
 #define AUDIO_LATENCY 0.06            /* target queue, seconds */
 
@@ -463,15 +465,19 @@ static void on_frame(M68K *c)
       write_shot(cap, cw, ch, cw);
   }
   queue_audio();
+#ifndef __EMSCRIPTEN__
   if (!use_vsync)
     pace();
+#endif
   poll_events();
   if (input_hotkey_pressed(HOTKEY_FPS)) {
     settings.show_fps = !settings.show_fps;
     settings_save(&settings, settings_path);
   }
+#ifndef __EMSCRIPTEN__
   if (menu_request && use_gl)
     run_menu();
+#endif
   menu_request = 0;
   fps.emu_start = SDL_GetPerformanceCounter();
   if (++frame_count >= frame_limit && frame_limit) {
@@ -639,10 +645,16 @@ int main(int argc, char **argv)
   }
   Uint32 flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | (settings.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
   if (!no_gl) {
+#ifdef __EMSCRIPTEN__
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+#else
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+#endif
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     window = SDL_CreateWindow("Super Hang-On", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                               win_w, win_h, flags | SDL_WINDOW_OPENGL);
@@ -657,6 +669,9 @@ int main(int argc, char **argv)
   if (window && video_init(window, use_vsync) == 0) {
     use_gl = 1;
   } else {
+#ifdef __EMSCRIPTEN__
+    return fatal("WebGL2 initialization failed: %s", SDL_GetError());
+#else
     if (window) {
       fprintf(stderr, "shangon: OpenGL unavailable, using the basic renderer (no CRT filters)\n");
       video_shutdown();
@@ -670,6 +685,7 @@ int main(int argc, char **argv)
       return fatal("SDL_CreateRenderer: %s", SDL_GetError());
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
     SDL_RenderSetIntegerScale(renderer, SDL_TRUE);
+#endif
   }
   perf_freq = SDL_GetPerformanceFrequency();
 

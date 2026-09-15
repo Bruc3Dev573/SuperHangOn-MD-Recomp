@@ -17,6 +17,12 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+if(EMSCRIPTEN)
+  if(NOT SHANGON_ROM OR NOT EXISTS "${SHANGON_ROM}")
+    message(FATAL_ERROR "SHANGON_ROM must point to the ROM to preload (it is never copied into the repository)")
+  endif()
+endif()
+
 set(ROOT ${CMAKE_CURRENT_SOURCE_DIR}/..)
 set(GEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/gen)
 set(GEN_CODE ${GEN_DIR}/shangon_code.c)
@@ -93,7 +99,9 @@ else()
 endif()
 target_include_directories(nuked_opn2 PUBLIC third_party/nuked-opn2)
 
-find_package(SDL2 REQUIRED)
+if(NOT EMSCRIPTEN)
+  find_package(SDL2 REQUIRED)
+endif()
 if(WIN32)
   # static libgcc so the executable needs no MinGW runtime DLLs
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc")
@@ -108,14 +116,26 @@ target_include_directories(shangon PRIVATE src third_party/chips)
 set_target_properties(shangon PROPERTIES WIN32_EXECUTABLE TRUE)   # no console window on Windows
 target_compile_options(shangon PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall>)
 target_link_libraries(shangon PRIVATE nuked_opn2 m)
-if(TARGET SDL2::SDL2)
-  if(TARGET SDL2::SDL2main)
-    target_link_libraries(shangon PRIVATE SDL2::SDL2main)
-  endif()
-  target_link_libraries(shangon PRIVATE SDL2::SDL2)
+if(EMSCRIPTEN)
+  set_target_properties(shangon PROPERTIES SUFFIX ".html")
+  target_compile_options(shangon PRIVATE "-sUSE_SDL=2")
+  target_link_options(shangon PRIVATE
+    "-sUSE_SDL=2"
+    "-sMIN_WEBGL_VERSION=2"
+    "-sMAX_WEBGL_VERSION=2"
+    "-sALLOW_MEMORY_GROWTH=1"
+    "-sNO_EXIT_RUNTIME=1"
+    "--preload-file=${SHANGON_ROM}@/baserom.md")
 else()
-  target_include_directories(shangon PRIVATE ${SDL2_INCLUDE_DIRS})
-  target_link_libraries(shangon PRIVATE ${SDL2_LIBRARIES})
+  if(TARGET SDL2::SDL2)
+    if(TARGET SDL2::SDL2main)
+      target_link_libraries(shangon PRIVATE SDL2::SDL2main)
+    endif()
+    target_link_libraries(shangon PRIVATE SDL2::SDL2)
+  else()
+    target_include_directories(shangon PRIVATE ${SDL2_INCLUDE_DIRS})
+    target_link_libraries(shangon PRIVATE ${SDL2_LIBRARIES})
+  endif()
 endif()
 
 # ---- installation (tools/build_port.sh --install, tools/package_linux.sh) ----
