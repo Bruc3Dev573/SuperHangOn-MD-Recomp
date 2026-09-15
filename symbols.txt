@@ -1,0 +1,93 @@
+# Super Hang-On (MD) symbol database - see tools/disasm/analyze.py for the format
+# addr    type       name                 args
+
+# --- system -------------------------------------------------------------
+000200    code       ErrorTrap
+000202    code       NullInterrupt
+006bac    code       EntryPoint
+006d2a    code       VBlankInt
+006d4e    code       WaitVBlank
+006d5e    code       WaitVBlankTicks8     # waits until VBlank counter $FFC724 reaches 8
+006cf2    code       GameModeTable        # main loop: jsr (GameModeTable,pc,($FFC704 & $7FFC))
+006d42    code       VBlankModeTable      # VBlank: jsr (VBlankModeTable,pc,$FFC722)
+006da6    ram_code   HBlankCode           vma=ff05d2 len=2e
+006d8e    code       CopyHBlankCodeToRam
+006e28    code       LoadZ80Driver
+006e8c    code       PlaySound            # d7 = sound id, written to Z80 RAM $1C03
+006eb4    code       Z80BusRequest
+006ebe    code       Z80BusRelease
+00709a    code       QueueSpriteByDepth   # a0 = object; list at $FFE000-(depth*16)
+00817a    code       InitJoypadPorts
+008196    code       ReadJoypads
+0081e8    code       InitVdpRegisters
+0082ac    code       VdpDmaTransfer       # a6 = source, d6 = length (words), d7 = VDP command
+0083dc    code       VdpWriteWords        # d7 = VDP command, a6 = source, d6 = count-1
+00840e    code       VdpWriteTilemap      # d7 = command, a6 = source, d6 = columns-1, d5 = rows-1
+008448    code       LoadPalette          # a6 = {offset, count-1, words...} into $FFD380
+0084c2    code       Random
+00dc0c    code       InitRankingTables
+00e6a4    code       InitRecords
+
+# --- game modes ($FFC704, dispatched from GameModeTable) -------------------
+007242    code       Mode00_SegaLogo
+007492    code       Mode04_Title
+007b16    code       Mode08_ClassSelect
+007dac    code       Mode0C_MusicSelect
+0086c6    code       Mode10_RaceInit
+008968    code       Mode14
+008ac8    code       Mode18_Race
+00b866    code       Mode1C
+00d92c    code       Mode20_Ranking
+0052a4    code       Mode24
+00614e    code       Mode28
+004954    code       Mode2C
+006818    code       Mode30_Options
+00e194    code       Mode34
+07d7f4    label      Z80Driver
+008142    notptr                          # constant $00010001
+
+# --- fixed addresses -----------------------------------------------------
+# The Z80 sound driver reads its data through bank $0F ($78000-$7FFFF).
+078000    pin
+
+# --- values that look like ROM pointers but are not ------------------------
+009f8a    notptr                          # physics constant $0000C666
+00e15c    notptr     len=38               # records {text,text,tile $A6xx}
+
+# --- indirect jumps checked by hand -------------------------------------
+0085ea    resolved                        # jmp (a3): continuations loc_008622/loc_008638 (+lea)
+007c16    resolved                        # jsr (tbl,pc,d1): 9 stubs of 16 bytes at $7C5E-$7CDE
+
+# --- pointer tables not read during tracing (found by static scan) --------
+008f20    ptr_l      count=1 code=0
+008f28    ptr_l      count=1 code=0
+008f30    ptr_l      count=1 code=0
+008f38    ptr_l      count=1 code=0
+008f40    ptr_l      count=1 code=0
+008f68    ptr_l      count=1 code=0
+008f70    ptr_l      count=1 code=0
+008f78    ptr_l      count=1 code=0
+008f80    ptr_l      count=1 code=0
+008f88    ptr_l      count=1 code=0
+008f90    ptr_l      count=1 code=0
+008f98    ptr_l      count=1 code=0
+008fb0    ptr_l      count=1 code=0
+008fb8    ptr_l      count=6 code=0
+00b5b8    ptr_l      count=4 code=0
+00ba42    ptr_l      count=1 code=0
+00ba4c    ptr_l      count=1 code=0
+00ba56    ptr_l      count=1 code=0
+00c346    notptr     len=24               # tile values $C6xx
+
+# --- free space ------------------------------------------------------------
+# $FF runs between data files; patches that grow the code area eat into the
+# first one, so every address after it is unchanged.
+0161aa    filler     end=18000
+
+# --- busy-wait loops (the PC port yields to the next video frame here) -----
+006d54    waitloop                        # WaitVBlank: tst.w ($FF0500) / beq
+0089ae    waitloop                        # cmpi.w #4,($FFC724) / blt
+008b50    waitloop                        # race: cmpi.w #4,($FFC724) / blt
+00b94c    waitloop                        # cmpi.w #4,($FFC724) / blt
+000200    waitloop                        # ErrorTrap: bra.s *
+006d8c    waitloop                        # checksum failure: bra.s *

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Super Hang-On (PC port)
+Comment=Mega Drive Super Hang-On recompiled for PC, 60 fps
+Exec=shangon
+Terminal=false
+Categories=Game;

@@ -1,0 +1,18 @@
+# ROM images are never committed
+*.md
+rom/*
+!rom/baserom.sha1
+build/
+*.bin
+*.lst
+__pycache__/
+# vasm, fetched and built by tools/build_port.sh
+tools/bin/
+# generated from the user's ROM (never committed)
+port/gen/
+src/shangon.asm
+# SDL2 development files for MinGW, fetched by tools/package_windows.sh
+tools/sdl2-mingw/
+# local files
+.DS_Store
+.claude/

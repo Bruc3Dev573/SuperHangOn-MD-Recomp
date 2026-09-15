@@ -1,0 +1,15 @@
+# executed instruction addresses not reachable statically (collected by running the game)
+007c5e
+007c6e
+007c7e
+007c8e
+007c9e
+007cae
+007cbe
+007cce
+007cde
+0085ec
+008622
+00862c
+008638
+008642
