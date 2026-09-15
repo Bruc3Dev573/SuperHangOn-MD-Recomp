@@ -421,8 +421,10 @@ static void run_menu(void)
     const uint32_t *cap = video_captured(&cw, &ch);
     if (cap)
       write_shot(cap, cw, ch, cw);
+#ifndef __EMSCRIPTEN__
     if (!use_vsync)
       pace();
+#endif
     if (script_len)
       frame_count++;                              /* scripted runs keep counting frames */
     if (frame_limit && frame_count >= frame_limit)
