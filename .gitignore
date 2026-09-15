@@ -1,5 +1,6 @@
 # ROM images are never committed
 *.md
+!README.md
 rom/*
 !rom/baserom.sha1
 build/
