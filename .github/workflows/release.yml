@@ -5,8 +5,10 @@ name: release
 
 on:
   push:
+    branches: ["feat/macos-opengl"]
     tags: ["v*"]
   workflow_dispatch:
+
 
 permissions:
   contents: write
@@ -38,6 +40,8 @@ jobs:
   macos:
     runs-on: macos-14
     steps:
+      - uses: actions/checkout@v4
+
       - name: Dependencies
         run: brew install cmake pkg-config sdl2 sdl3
 
