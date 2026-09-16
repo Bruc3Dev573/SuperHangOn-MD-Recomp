@@ -1,7 +1,7 @@
 # Super Hang-On MD Recomp
 
 A recompilation of **Super Hang-On** for the Sega Mega Drive (Genesis) that
-runs natively on Linux and Windows.
+runs natively on Linux, Windows and macOS (Apple Silicon).
 
 ## Why the Mega Drive version and not the arcade one?
 
@@ -45,9 +45,9 @@ So I wanted to give one of my favourite games the treatment it deserves.
    | CRC32 | `cb2201a3` |
    | Size | 524,288 bytes |
 
-3. Run `shangon` (Linux) or `shangon.exe` (Windows). On Linux SDL2 must be
-   installed (Debian/Ubuntu: `sudo apt install libsdl2-2.0-0`); the Windows
-   release already includes it.
+3. Run `shangon` (Linux), `shangon.exe` (Windows) or `./shangon` from Terminal
+   (macOS). On Linux SDL2 must be installed (Debian/Ubuntu:
+   `sudo apt install libsdl2-2.0-0`); the Windows and macOS releases include it.
 
 The ROM is not included and never will be. The release contains no game code
 either: at the first start it is translated from your ROM and kept in
@@ -84,8 +84,6 @@ created on the first run.
 - Something I haven't found yet, for sure.
 
 ## To do
-
-- macOS release
 - 120 fps
 - More responsive bike handling
 - Analog controls for throttle, brake and steering
