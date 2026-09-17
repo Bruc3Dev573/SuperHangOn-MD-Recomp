@@ -462,6 +462,10 @@ static int add_sprite(Scene *s, const Image *img, int ax, int ay, int step)
     return 0;
   float x0 = (float)(ax - img->ox), y0 = (float)(ay - img->oy);
   float x1 = x0 + img->w, y1 = y0 + img->h;
+  /* beside the 4:3 screen the road is not drawn, so a hill cannot hide an
+   * object there: what a hill cuts would float over the flat background */
+  int beside = x1 <= 0.0f || x0 >= 320.0f;
+  int first = s->nsprites;
   const float margin = 1.5f;
   int base = ay * VIS_SUB;
   int base_hidden = step >= 0 && base >= 0 && base < 224 * VIS_SUB && visible_step[base] > step + margin;
@@ -476,6 +480,10 @@ static int add_sprite(Scene *s, const Image *img, int ax, int ay, int step)
     if (i == i1 || hidden) {
       float end = i == i1 ? y1 : (y > y0 ? y : y0);
       if (open && end > start) {
+        if (beside && (start > y0 || end < y1)) {
+          s->nsprites = first;                        /* cut by a hill: not drawn */
+          return 1;
+        }
         if (s->nsprites == SCENE_MAX_SPRITES)
           return 0;
         SceneSprite *sp = &s->sprite[s->nsprites++];
