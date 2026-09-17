@@ -95,9 +95,9 @@ Setup
   2. Open Terminal in this folder and run ./shangon
 
 Settings menu: Esc, F1 or the controller Back button (display, screen format,
-CRT filters, volume, reset, quit). F3 shows the frame rate counter.
+CRT filters, frame rate, volume, reset, quit). F3 shows the frame rate counter.
 Options: --fullscreen, --window W H, --mute, --vsync / --no-vsync,
---format 4:3|16:9|21:9,
+--fps 60|120, --format 4:3|16:9|21:9,
 --crt off|scanlines|aperture|slot|shadow.
 Controls are in controls.ini in this folder (created on the first run):
 arrows / D-pad, Z X C = A B C, right trigger accelerates (B), left trigger
