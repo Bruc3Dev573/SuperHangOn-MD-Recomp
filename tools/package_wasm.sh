@@ -21,6 +21,10 @@ mkdir -p "$stage"
 tools/build_wasm.sh --build "$build"
 cp "$build/shangon.html" "$build/shangon.js" "$build/shangon.wasm" "$stage/"
 cp LICENSE "$stage/"
+mkdir -p "$stage/licenses/nuked-opn2" "$stage/licenses/chips" "$stage/source/nuked-opn2"
+cp port/third_party/nuked-opn2/LICENSE port/third_party/nuked-opn2/SOURCE "$stage/licenses/nuked-opn2/"
+cp port/third_party/nuked-opn2/ym3438.c port/third_party/nuked-opn2/ym3438.h "$stage/source/nuked-opn2/"
+cp port/third_party/chips/LICENSE port/third_party/chips/SOURCE "$stage/licenses/chips/"
 cat > "$stage/README.txt" <<EOF
 Super Hang-On browser build ($(date +%Y-%m-%d), $(git rev-parse --short HEAD))
 
