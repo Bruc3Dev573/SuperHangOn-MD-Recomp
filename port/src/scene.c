@@ -530,8 +530,21 @@ static int sprite_matches(unsigned sat, int entry, const Piece *pieces, int np)
   return 1;
 }
 
+/* sprite queue generation keeps a left guard band for masking; an object
+ * whose queued pieces all fall there has no native 4:3 pixels */
+static int pieces_on_screen(const Piece *pieces, int np)
+{
+  for (int j = 0; j < np; j++) {
+    int w = (((pieces[j].size >> 2) & 3) + 1) * 8;
+    if (pieces[j].x < 0x1c0 && pieces[j].x + w > 0x80)
+      return 1;
+  }
+  return 0;
+}
+
 /* objects the table does not show: culled pieces, or roadside objects beside
  * the 4:3 screen that the game does not queue (loc_00C7F8) */
+
 static int drawn_off_table(unsigned obj, int np, int total)
 {
   int x = (int16_t)ram_w(obj + 0x10);
@@ -599,7 +612,10 @@ static int build_sprites(Scene *s)
       if (drawn_off_table(obj, np, total))
         items[nitems++] = (Item){order[k], -1};
     }
-    items[nitems++] = (Item){order[found], -1};
+    unsigned obj = OBJ_FIRST + (unsigned)order[found] * OBJ_SIZE;
+    int total, np = object_pieces(obj, pieces, &total);
+    if (pieces_on_screen(pieces, found_np) || drawn_off_table(obj, np, total))
+      items[nitems++] = (Item){order[found], -1};
     entry += found_np;
     k = found + 1;
   }
