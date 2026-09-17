@@ -81,7 +81,6 @@ created on the first run.
 ## Known issues
 
 - Some graphical glitches may appear in 16:9 and 21:9.
-- While rewinding in 16:9 or 21:9 the picture goes back to 4:3.
 - I'm not happy with the CRT filters yet, but I'm working on them (I swear!).
 - Something I haven't found yet, for sure.
 

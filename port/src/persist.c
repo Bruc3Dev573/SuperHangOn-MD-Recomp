@@ -5,6 +5,7 @@
 #include "state.h"
 #include "recomp_rt.h"
 #include "md.h"
+#include "scene.h"
 
 #define REWIND_FRAMES (120 * 20)          /* ring capacity: 20 s at 120 frames per second */
 #define REWIND_BYTES ((size_t)96 << 20)
@@ -194,6 +195,10 @@ void persist_init(const char *d)
 
 static void after_load(M68K *c)
 {
+  /* the wide picture is built from a snapshot of the RAM taken at the end of
+   * the frame: the loaded state replaces it, so that it matches the VDP state
+   * the next frame is displayed with (a rewound frame stayed 4:3 without it) */
+  scene_frame_end();
   /* records live outside the states: never let a state take them back */
   if (records_applied && game_initialised())
     records_copy(1);
