@@ -15,8 +15,10 @@ So I wanted to give one of my favourite games the treatment it deserves.
 
 ## Features
 
-- 60 fps game logic and rendering, or 120 fps (FRAME RATE in the settings
-  menu, changed while you play, even in the middle of a race)
+- **60 fps** game logic and rendering — not interpolated frames: the game
+  itself runs twice per original tick
+- **120 fps** for 120 Hz screens (FRAME RATE in the settings menu): the switch
+  takes effect at once, even in the middle of a race
 - Reduced input lag
 - 16:9 and 21:9 widescreen races
 - CRT filters (scanlines, aperture grille, slot mask, shadow mask) with
@@ -30,8 +32,9 @@ So I wanted to give one of my favourite games the treatment it deserves.
   scaling (integer, fit, stretch), TV or square pixels, vsync, volume
 - Frame rate counter
 - Keyboard and game controller support, remappable in `controls.ini`
-- Analog steering with the left stick (how far you push is how far the bike
-  steers)
+- **Analog steering**: with the left stick the bike leans as far as you push,
+  instead of the all-or-nothing of the D-pad (the D-pad and the keys still
+  steer fully)
 - Original sound: the game's own Z80 sound driver with cycle-accurate YM2612
   and PSG emulation
 
@@ -61,34 +64,30 @@ executable, so its folder must be writable.
 
 ## Controls
 
-| Action | Keyboard | Controller |
-|---|---|---|
-| Steer | Arrow keys | D-pad / left stick (analog) |
-| Accelerate (B) | X | A / right trigger |
-| Brake (A) | Z | X / left trigger |
-| Turbo (C) | C | B |
-| Start | Enter | Start |
-| Settings menu | Esc / F1 | Back |
-| Rewind (hold) | Backspace | Left shoulder |
-| Save state | F5 | |
-| Load state | F8 | |
-| Previous / next slot | F6 / F7 | |
-| Fullscreen | F11 | |
-| Frame rate counter | F3 | |
+| Action | Keyboard | Xbox controller | PlayStation controller |
+|---|---|---|---|
+| Steer | Arrow keys | D-pad / left stick (analog) | D-pad / left stick (analog) |
+| Accelerate (B) | X | A / right trigger | Cross / R2 |
+| Brake (A) | Z | X / left trigger | Square / L2 |
+| Turbo (C) | C | B | Circle |
+| Start | Enter | Start | Options |
+| Settings menu | Esc / F1 | Back | Share (Create) |
+| Rewind (hold) | Backspace | Left shoulder | L1 |
+| Save state | F5 | | |
+| Load state | F8 | | |
+| Previous / next slot | F6 / F7 | | |
+| Fullscreen | F11 | | |
+| Frame rate counter | F3 | | |
 
-Controller buttons use the Xbox layout: on a PlayStation controller A, B and X
-are cross, circle and square. All bindings can be changed in `controls.ini`,
-created on the first run.
+All bindings can be changed in `controls.ini`, created on the first run.
 
 ## Known issues
 
-- Some graphical glitches may appear in 16:9 and 21:9.
 - I'm not happy with the CRT filters yet, but I'm working on them (I swear!).
 - Something I haven't found yet, for sure.
 
 ## To do
 
-- macOS release
 - More responsive bike handling
 - Sound in the demo mode
 - In-game music selection
