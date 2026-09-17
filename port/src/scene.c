@@ -132,12 +132,20 @@ static int fit_road(RoadModel *m)
   return 1;
 }
 
+/* which of the two road copies (palettes) every depth step is drawn with:
+ * from the stripe phase, and for the steps on screen from the line scroll the
+ * VDP displayed (after the goal the phase of the snapshot is one step ahead of
+ * the picture) */
+static uint8_t step_stripe[STEPS];
+
 /* the line scroll values the game computes from the tables (sub_00EB86)
  * must be the ones the VDP displayed */
 static int tables_match_display(void)
 {
   unsigned hs_table = (unsigned)vdp.reg[13] << 10;
   unsigned phase = (unsigned)snap_w(RAM_STRIPE) & 31;
+  for (int i = 0; i < STEPS; i++)
+    step_stripe[i] = md.rom[ROM_STRIPES + phase * 96 + (i >> 1)] != 0;
   int road_lines = 0;
   for (int line = 0; line < 224; line++) {
     uint16_t v = (uint16_t)snap_w(RAM_LINE_STEP + 2 * line);
@@ -146,10 +154,16 @@ static int tables_match_display(void)
     unsigned step = v >> 1;
     if (step >= STEPS)
       return 0;
-    int stripe = md.rom[ROM_STRIPES + phase * 96 + (step >> 1)] != 0;
-    uint16_t vs = (uint16_t)(0x140 - line + step - (stripe ? STRIPE_ROWS : 0));
+    uint16_t vs = (uint16_t)(0x140 - line + step);
     uint16_t hs = (uint16_t)((snap_w(RAM_CURVE + 2 * step) >> 6) - 100);
-    if (((vdp.line_vscroll[line][1] ^ vs) & 0x3ff) || ((vram_w(hs_table + line * 4 + 2) ^ hs) & 0x3ff))
+    uint16_t shown = vdp.line_vscroll[line][1];
+    if ((vram_w(hs_table + line * 4 + 2) ^ hs) & 0x3ff)
+      return 0;
+    if (!((shown ^ vs) & 0x3ff))
+      step_stripe[step] = 0;
+    else if (!((shown ^ (uint16_t)(vs - STRIPE_ROWS)) & 0x3ff))
+      step_stripe[step] = 1;
+    else
       return 0;
     road_lines++;
   }
@@ -195,7 +209,6 @@ static int build_road(Scene *s)
   if (!fit_road(&m))
     return 0;
 
-  unsigned phase = (unsigned)snap_w(RAM_STRIPE) & 31;
   int top = snap_w(RAM_STEP_Y) >> 4;
   if (top < 0 || 223 - top < 0)
     return 0;
@@ -227,7 +240,7 @@ static int build_road(Scene *s)
       if (x[j] > right) x[j] = right;
     }
     if (i > 0 && y != y_prev) {
-      int stripe = md.rom[ROM_STRIPES + phase * 96 + ((i - 1) >> 1)] != 0;
+      int stripe = step_stripe[i - 1];
       int up = y < y_prev;
       for (int r = 0; r < m.n; r++) {
         uint32_t rgb = render_colour(m.colour[stripe][r]);

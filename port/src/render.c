@@ -179,6 +179,7 @@ int render_wide_effects;
  * 16-21 (and groups spanning the middle) stay; source x per wide column, -1
  * where nothing is shown */
 static int16_t hud_map[32][RENDER_WIDE_MAX];
+#define HUD_ROWS 8                    /* window rows spread to the edges */
 
 static int window_tile_blank(uint32_t nt_w, unsigned tx, unsigned ty)
 {
@@ -190,21 +191,29 @@ static int window_tile_blank(uint32_t nt_w, unsigned tx, unsigned ty)
   return 1;
 }
 
-static void build_hud_map(uint32_t nt_w, unsigned ty, int ext, int width)
+/* spread: the groups move to the edges (the HUD at the top); otherwise they
+ * stay where the game put them. Returns 1 when the row covers every column
+ * (a full screen effect, which the sides could not show). */
+static int build_hud_map(uint32_t nt_w, unsigned ty, int ext, int width, int spread)
 {
   int16_t *map = hud_map[ty];
   for (int i = 0; i < width; i++)
     map[i] = -1;
-  int blank[40];
-  for (unsigned c = 0; c < 40; c++)
+  int blank[40], full = 1;
+  for (unsigned c = 0; c < 40; c++) {
     blank[c] = window_tile_blank(nt_w, c, ty);
+    full &= !blank[c];
+  }
   for (int c0 = 0; c0 < 40;) {
     if (blank[c0]) { c0++; continue; }
     int c1 = c0;
     while (c1 + 1 < 40 && !blank[c1 + 1]) c1++;
-    int shift = c0 <= 15 ? -ext : c0 <= 21 ? 0 : ext;
-    if (c0 > 2 && c0 <= 15 && c1 >= 22)
-      shift = 0;                                      /* a centred message */
+    int shift = 0;
+    if (spread) {
+      shift = c0 <= 15 ? -ext : c0 <= 21 ? 0 : ext;
+      if (c0 > 2 && c0 <= 15 && c1 >= 22)
+        shift = 0;                                    /* a centred message */
+    }
     for (int px = c0 * 8; px < (c1 + 1) * 8; px++) {
       int dest = px + shift + ext;
       if (dest >= 0 && dest < width)
@@ -212,6 +221,7 @@ static void build_hud_map(uint32_t nt_w, unsigned ty, int ext, int width)
     }
     c0 = c1 + 1;
   }
+  return full;
 }
 
 void render_frame_wide(int ext)
@@ -240,13 +250,17 @@ void render_frame_wide(int ext)
   uint32_t hs_table = (uint32_t)r[13] << 10;
   unsigned wh = r[17] & 0x1f, wv = r[18] & 0x1f;
   int full_rows = !wh;                                /* window lines cover the whole width */
-  /* only a HUD at the top can be spread over a wide picture */
-  if (wh || (r[18] & 0x80) || wv > 8)
+  /* the window must lie in whole rows at the top: its first rows are the HUD
+   * and are spread to the edges, the ones below stay where they are (at the
+   * goal the game puts the window over the whole screen and writes the bonus
+   * points in it). A row that covers every column is a full screen effect
+   * (the fade at the start of a race): the sides could not show it. */
+  if (wh || (r[18] & 0x80))
     render_wide_effects++;
   if (full_rows)
     for (unsigned ty = 0; ty < 28; ty++)
       if ((r[18] & 0x80) ? ty >= wv : ty < wv)
-        build_hud_map(nt_w, ty, ext, width);
+        render_wide_effects += build_hud_map(nt_w, ty, ext, width, ty < HUD_ROWS);
 
   for (int y = 0; y < MD_MAX_H; y++) {
     unsigned hs_line = (r[11] & 3) == 3 ? (unsigned)y : (r[11] & 3) == 0 ? 0 : (unsigned)y & ~7u;
