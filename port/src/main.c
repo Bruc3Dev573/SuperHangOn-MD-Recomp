@@ -6,7 +6,7 @@
  *           [--scale-mode integer|fit|stretch] [--square-pixels] [--format 4:3|16:9|21:9]
  *           [--no-gl] [--no-fps]
  *           [--mute] [--frames N] [--input FILE] [--screenshot FRAME[-LAST] FILE]
- *           [--no-rom-check] [--data DIR] [--fps 60|120]
+ *           [--no-rom-check] [--data DIR] [--fps 60|120] [--ram-log FILE EVERY]
  *
  * The ROM must be the one the game code was recompiled from (SHA1 checked).
  * Default ROM: baserom.md in the game directory, else rom/baserom.md (a
@@ -14,8 +14,9 @@
  * executable; it also holds settings.ini, controls.ini, the save state slots and
  * records.bin (--data DIR puts those elsewhere).
  *
- * --frames quits after N frames and prints the rate; --input adds scripted
- * presses, lines "first_frame last_frame BUTTONS" (pad: U D L R A B C S;
+ * --frames quits after N frames and prints the rate; --ram-log writes
+ * "frame rate time speed distance lateral score stage" every EVERY frames
+ * (tests); --input adds scripted presses, lines "first_frame last_frame BUTTONS" (pad: U D L R A B C S;
  * hotkeys: 5 save state, 8 load state, W rewind, M settings menu, F frame
  * rate 60 / 120, Q reset the game).
  *
@@ -221,6 +222,7 @@ static void poll_events(void)
 
 #ifdef RT_CODE_SETS_RATES
 static int rate_apply(int rate);
+static void rate_scale_timers(int previous, int rate);
 #endif
 
 static void on_frame_end(M68K *c, uint32_t resume_pc)
@@ -245,6 +247,8 @@ static void on_frame_end(M68K *c, uint32_t resume_pc)
       exit(3);
     }
     settings.frame_rate = 60 * rt_rate;
+    if (rt_rate != previous)
+      rate_scale_timers(previous, rt_rate);
     persist_rate_changed();
     rt_resume_at(c, resume_pc);                 /* does not return */
   }
@@ -360,6 +364,22 @@ static void queue_audio(void)
  * interval and the longest emulation time of the last second */
 static long shot_frame = -1, shot_last = -1;   /* --screenshot FRAME[-LAST] FILE (tests) */
 static const char *shot_file;
+static FILE *ram_log;                          /* --ram-log FILE EVERY (tests) */
+static long ram_log_every;
+
+/* a few game variables per frame, to follow a race from outside */
+static void ram_log_frame(void)
+{
+  if (!ram_log || frame_count % ram_log_every)
+    return;
+  const uint8_t *r = md.ram;
+  unsigned speed = (unsigned)(r[0x64a] << 24 | r[0x64b] << 16 | r[0x64c] << 8 | r[0x64d]);
+  unsigned dist = (unsigned)(r[0x616] << 24 | r[0x617] << 16 | r[0x618] << 8 | r[0x619]);
+  int lateral = (int16_t)(r[0x614] << 8 | r[0x615]);
+  fprintf(ram_log, "%ld %d %02x %u %u %d %02x%02x%02x%02x %d\n", frame_count, rt_rate, r[0x554],
+          speed, dist, lateral, r[0x54c], r[0x54d], r[0x54e], r[0x54f],
+          (int)(r[0x52c] << 8 | r[0x52d]));
+}
 
 static int shot_wanted(void)
 {
@@ -414,6 +434,40 @@ static void fps_update(Uint64 frame_start)
 }
 
 #ifdef RT_CODE_SETS_RATES
+/* The game counts the seconds of a race in ticks: the length of a second is
+ * kept in its RAM ($FF0556, written at the start of a race by
+ * patches/pc60/timer.asm) and counted down at $FF0555 (the race clock) and at
+ * $FFC88C (the time of the ranking). With the new rate a second is a different
+ * number of ticks, so the length is rewritten and what is left of the current
+ * second is rescaled; without this the clock of a race that had already
+ * started ran at half or twice its speed. */
+static void rate_scale_timers(int previous, int rate)
+{
+  unsigned second = 60u * (unsigned)rate;
+  md.ram[0x556] = (uint8_t)second;
+  static const unsigned counters[] = {0x555, 0xc88c};
+  for (unsigned i = 0; i < sizeof counters / sizeof counters[0]; i++) {
+    unsigned left = md.ram[counters[i]];
+    if (!left)
+      continue;
+    left = left * (unsigned)rate / (unsigned)previous;
+    if (left < 1) left = 1;
+    if (left > second) left = second;
+    md.ram[counters[i]] = (uint8_t)left;
+  }
+  /* the phases of the overlays (patches/pc60/00_sched_ram.asm) count the ticks
+   * of a 30 Hz tick and act on the last one: what is left of the phase is
+   * rescaled too, so that steering, throttle and the steps of everything that
+   * moves once per 30 Hz tick keep their place in the tick */
+  unsigned ticks_old = 2u * (unsigned)previous, ticks_new = 2u * (unsigned)rate;
+  static const unsigned phases[] = {0xc621, 0xc628, 0xc629};
+  for (unsigned i = 0; i < sizeof phases / sizeof phases[0]; i++) {
+    unsigned p = md.ram[phases[i]] & (ticks_old - 1);
+    unsigned left = (ticks_old - 1 - p) * ticks_new / ticks_old;
+    md.ram[phases[i]] = (uint8_t)(ticks_new - 1 - left);
+  }
+}
+
 /* Puts the game code of `rate` (60 or 120 logic ticks per second) in place:
  * the overlay bytes of that build are applied to a clean copy of the ROM and
  * the code is decoded again (a few thousand instructions, or read from the
@@ -529,6 +583,7 @@ static void on_frame(M68K *c)
     if (cap)
       write_shot(cap, cw, ch, cw);
   }
+  ram_log_frame();
   queue_audio();
   if (!use_vsync)
     pace();
@@ -641,6 +696,11 @@ int main(int argc, char **argv)
       if (*end == '-')
         shot_last = strtol(end + 1, NULL, 10);
       shot_file = argv[++i];
+    }
+    else if (!strcmp(argv[i], "--ram-log") && i + 2 < argc) {
+      ram_log = fopen(argv[++i], "w");
+      ram_log_every = atol(argv[++i]);
+      if (ram_log_every < 1) ram_log_every = 1;
     }
     else if (!strcmp(argv[i], "--no-rom-check")) rom_check = 0;
     else if (!strcmp(argv[i], "--fps") && i + 1 < argc) cli_fps = atoi(argv[++i]);
