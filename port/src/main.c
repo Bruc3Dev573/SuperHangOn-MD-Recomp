@@ -22,10 +22,11 @@
  *
  * The recompiled game runs from the reset vector (rt_start); at every video
  * frame the runtime calls on_frame(), which renders the VDP state, presents
- * it, queues the frame's sound, polls input and paces the loop to 60 frames
- * per second. The sound is resampled from the native YM2612 rate to the device
- * rate; the ratio follows the device queue level so that sound and video,
- * driven by different clocks, stay in step without gaps or growing latency.
+ * it, queues the frame's sound and polls input. Native builds pace locally;
+ * Emscripten builds schedule frames from the browser display callback. The
+ * sound is resampled from the native YM2612 rate to the device rate; the ratio
+ * follows the device queue level so that sound and video, driven by different
+ * clocks, stay in step without gaps or growing latency.
  *
  * Controls are configured in controls.ini (written with the defaults on the
  * first run): arrows / D-pad / left stick, Z X C = A B C (controller X A B and
@@ -41,6 +42,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <SDL.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 #include "recomp_rt.h"
 #include "scene.h"
 #include "md.h"
@@ -87,6 +92,29 @@ static int audio_rate;
 static Resampler resampler;
 static double audio_step;             /* nominal input frames per output frame */
 static Uint64 start_time;
+#ifdef __EMSCRIPTEN__
+EM_JS(void, browser_audio_resume, (), {
+  if (typeof Module !== "undefined" && Module.SDL2 && Module.SDL2.audioContext)
+    Module.SDL2.audioContext.resume();
+});
+
+static int browser_audio_event(const SDL_Event *e)
+{
+  return e->type == SDL_KEYDOWN || e->type == SDL_MOUSEBUTTONDOWN ||
+         e->type == SDL_FINGERDOWN || e->type == SDL_CONTROLLERBUTTONDOWN ||
+         e->type == SDL_JOYBUTTONDOWN;
+}
+
+static void browser_audio_gesture(void)
+{
+  if (audio_dev) {
+    SDL_PauseAudioDevice(audio_dev, 0);
+    browser_audio_resume();
+  }
+}
+
+static int browser_menu_active;
+#endif
 #ifdef RT_CODE_SETS_RATES
 static uint8_t *rom_clean;            /* the ROM without the overlays of a rate */
 static char data_path[1024];          /* where the code caches are kept */
@@ -187,6 +215,10 @@ static void poll_events(void)
     if (e.type == SDL_QUIT)
       exit(0);
     input_event(&e);
+#ifdef __EMSCRIPTEN__
+    if (browser_audio_event(&e))
+      browser_audio_gesture();
+#endif
   }
   if (input_hotkey_pressed(HOTKEY_MENU) | input_hotkey_pressed(HOTKEY_QUIT))
     menu_request = 1;
@@ -296,6 +328,7 @@ static void present(void)
   SDL_RenderPresent(renderer);
 }
 
+#ifndef __EMSCRIPTEN__
 /* without vsync: sleep until the next 1/60 s boundary (coarse sleep, then spin) */
 static void pace(void)
 {
@@ -313,6 +346,7 @@ static void pace(void)
       SDL_Delay((Uint32)(left_ms - 2));
   }
 }
+#endif
 
 #define AUDIO_LATENCY 0.06            /* target queue, seconds */
 
@@ -427,8 +461,12 @@ static void fps_update(Uint64 frame_start)
   double window = (double)(frame_start - fps.window_start) * ms;
   if (window >= 1000.0) {
     char sync[16];
+#ifdef __EMSCRIPTEN__
+    snprintf(sync, sizeof sync, "BROWSER");
+#else
     if (use_vsync) snprintf(sync, sizeof sync, "VSYNC %d", refresh_hz);
     else snprintf(sync, sizeof sync, "TIMER %d", refresh_hz);
+#endif
     snprintf(fps.text, sizeof fps.text, "%.1f FPS LATE %d MAX %.0f CPU %.1f %s",
              (fps.frames - 1) * 1000.0 / window, fps.late_total, fps.max_interval_ms, fps.max_emu_ms, sync);
     fps.window_start = frame_start;
@@ -492,6 +530,7 @@ static int rate_apply(int rate)
     return -1;
   rt_set_rate(rate);
   FPS = 60 * rate;
+  rt_set_fps(FPS);
   menu_rate = rate;
   apply_vsync();                      /* the automatic choice follows the frame rate */
   next_frame = 0;                     /* the frame period changed: pace from now */
@@ -500,6 +539,7 @@ static int rate_apply(int rate)
 }
 #endif
 
+#ifndef __EMSCRIPTEN__
 /* the settings menu runs its own loop: the game is paused meanwhile */
 static void run_menu(void)
 {
@@ -555,6 +595,51 @@ static void run_menu(void)
   /* avoid a frame rate hiccup on the counter */
   fps.last_frame = 0;
 }
+#endif
+
+#ifdef __EMSCRIPTEN__
+static int browser_menu_tick(void)
+{
+  if (!browser_menu_active)
+    return 0;
+  SDL_Event e;
+  while (SDL_PollEvent(&e)) {
+    if (e.type == SDL_QUIT) {
+      settings_save(&settings, settings_path);
+      exit(0);
+    }
+    input_event(&e);
+    if (browser_audio_event(&e))
+      browser_audio_gesture();
+  }
+  int apply = 0;
+  int back = input_hotkey_pressed(HOTKEY_MENU) | input_hotkey_pressed(HOTKEY_QUIT);
+  int state = menu_update(&settings, input_pad(), back, &apply);
+  if (apply & APPLY_FULLSCREEN) apply_fullscreen();
+  if (apply & APPLY_WINDOW) apply_window();
+  if (apply & APPLY_VSYNC) apply_vsync();
+  if (apply & APPLY_SAVE) settings_save(&settings, settings_path);
+  if (state == MENU_QUIT) {
+    settings_save(&settings, settings_path);
+    exit(0);
+  }
+  if (state == MENU_RESET) {
+    persist_request_reset();
+    browser_menu_active = 0;
+    fps.last_frame = 0;
+    return 1;
+  }
+  if (state == MENU_CLOSED) {
+    browser_menu_active = 0;
+    fps.last_frame = 0;
+    return 1;
+  }
+  ui_clear();
+  menu_draw(&settings);
+  present();
+  return 1;
+}
+#endif
 
 static void on_frame(M68K *c)
 {
@@ -590,15 +675,26 @@ static void on_frame(M68K *c)
   }
   ram_log_frame();
   queue_audio();
+#ifndef __EMSCRIPTEN__
   if (!use_vsync)
     pace();
+#endif
   poll_events();
   if (input_hotkey_pressed(HOTKEY_FPS)) {
     settings.show_fps = !settings.show_fps;
     settings_save(&settings, settings_path);
   }
+#ifdef __EMSCRIPTEN__
+  if (menu_request && use_gl) {
+    menu_open();
+    browser_menu_active = 1;
+    if (audio_dev)
+      SDL_ClearQueuedAudio(audio_dev);
+  }
+#else
   if (menu_request && use_gl)
     run_menu();
+#endif
   menu_request = 0;
   fps.emu_start = SDL_GetPerformanceCounter();
   if (++frame_count >= frame_limit && frame_limit) {
@@ -802,10 +898,16 @@ int main(int argc, char **argv)
   }
   Uint32 flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | (settings.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
   if (!no_gl) {
+#ifdef __EMSCRIPTEN__
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+#else
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+#endif
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     window = SDL_CreateWindow("Super Hang-On", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                               win_w, win_h, flags | SDL_WINDOW_OPENGL);
@@ -820,6 +922,9 @@ int main(int argc, char **argv)
   if (window && video_init(window, use_vsync) == 0) {
     use_gl = 1;
   } else {
+#ifdef __EMSCRIPTEN__
+    return fatal("WebGL2 initialization failed: %s", SDL_GetError());
+#else
     if (window) {
       fprintf(stderr, "shangon: OpenGL unavailable, using the basic renderer (no CRT filters)\n");
       video_shutdown();
@@ -833,6 +938,7 @@ int main(int argc, char **argv)
       return fatal("SDL_CreateRenderer: %s", SDL_GetError());
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
     SDL_RenderSetIntegerScale(renderer, SDL_TRUE);
+#endif
   }
   perf_freq = SDL_GetPerformanceFrequency();
 
@@ -846,6 +952,10 @@ int main(int argc, char **argv)
   rt_frame_end_callback = on_frame_end;
   start_time = SDL_GetPerformanceCounter();
   rt_frame_callback = on_frame;
+#ifdef __EMSCRIPTEN__
+  rt_render_callback = present;
+  rt_menu_tick_callback = browser_menu_tick;
+#endif
   M68K c;
   rt_start(&c);
   return 0;

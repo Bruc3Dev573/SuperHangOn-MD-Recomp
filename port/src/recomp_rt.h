@@ -48,9 +48,16 @@ void rt_start(M68K *c);
 /* one video frame of hardware: HBlank effects, VBlank interrupt, then the
  * host callback (render / audio / input / pacing) */
 extern void (*rt_frame_callback)(M68K *c);
+#ifdef __EMSCRIPTEN__
+extern void (*rt_render_callback)(void);
+extern int (*rt_menu_tick_callback)(void);
+#endif
 /* end of a video frame, before the game resumes at `resume_pc`: the machine
  * state is consistent here (save states) */
 extern void (*rt_frame_end_callback)(M68K *c, uint32_t resume_pc);
+/* selects the game tick rate; native builds pace locally, browser builds
+ * schedule the emulation against the display callback */
+void rt_set_fps(int fps);
 /* abandon the current execution (after loading a state) and continue at pc;
  * only valid from rt_frame_end_callback */
 void rt_resume_at(M68K *c, uint32_t pc);

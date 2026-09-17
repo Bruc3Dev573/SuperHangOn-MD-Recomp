@@ -1,6 +1,6 @@
-# Builds the Linux, Windows and macOS packages (no game code, no ROM data)
-# and, for a tag v*, publishes them as a release. Run by hand, it only keeps
-# the packages as workflow artifacts.
+# Builds the Linux, Windows, macOS and browser WASM packages (no game code,
+# no ROM data) and, for a tag v*, publishes them as a release. Run by hand,
+# it only keeps the packages as workflow artifacts.
 name: release
 
 on:
@@ -54,9 +54,28 @@ jobs:
           name: packages-macos
           path: build/dist/*.zip
 
+  wasm:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+          actions-cache-folder: emsdk-cache
+
+      - name: Browser package
+        run: tools/package_wasm.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-wasm
+          path: build/dist/*.zip
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [packages, macos]
+    needs: [packages, macos, wasm]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -73,4 +92,4 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" build/dist/*.tar.gz build/dist/*.zip \
             --title "Super Hang-On $GITHUB_REF_NAME" \
-            --notes "Linux and Windows builds plus a native macOS Apple Silicon build. Packages contain no game code and no ROM data: copy your own Super Hang-On (Japan, USA) (En,Ja) ROM next to the executable as baserom.md. At the first start the game code is translated from it."
+            --notes "Linux, Windows, macOS Apple Silicon and browser WASM builds. Packages contain no game code and no ROM data: native builds read baserom.md next to the executable; the browser asks for the same ROM in the page and keeps it in local storage. At the first start the game code is translated from it."

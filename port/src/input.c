@@ -3,6 +3,10 @@
 #include <string.h>
 #include <ctype.h>
 #include "input.h"
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
+
 
 #define MAX_BINDINGS 8
 #define AXIS_THRESHOLD 16000
@@ -29,6 +33,27 @@ static Action actions[8 + HOTKEY_COUNT] = {
 #define N_ACTIONS (int)(sizeof actions / sizeof actions[0])
 
 static SDL_GameController *controller;
+static void open_controller(int index);
+#ifdef __EMSCRIPTEN__
+static uint16_t touch_pad;
+static int touch_menu;
+
+/* Called by the browser shell's on-screen controls. The pad bit order matches
+ * the game's input latch: up, down, left, right, B, C, A, start. */
+EMSCRIPTEN_KEEPALIVE void input_touch_set(int button, int down)
+{
+  if (button >= 0 && button < 8) {
+    uint16_t bit = (uint16_t)(1u << button);
+    if (down)
+      touch_pad |= bit;
+    else
+      touch_pad &= (uint16_t)~bit;
+  } else if (button == 8) {
+    touch_menu = down != 0;
+  }
+}
+#endif
+
 
 static int analog_axis = -1;                     /* steering axis, -1: none */
 static int analog_deadzone = 10;
@@ -192,6 +217,8 @@ void input_init(const char *config_path)
     }
   }
   SDL_GameControllerEventState(SDL_ENABLE);
+  for (int i = 0; i < SDL_NumJoysticks(); i++)
+    open_controller(i);
 }
 
 static void open_controller(int index)
@@ -236,7 +263,12 @@ static int action_active(const Action *a)
 
 uint16_t input_pad(void)
 {
-  uint16_t m = 0;
+  uint16_t m =
+#ifdef __EMSCRIPTEN__
+    touch_pad;
+#else
+    0;
+#endif
   for (int i = 0; i < 8; i++)
     if (action_active(&actions[i]))
       m |= 1u << i;
@@ -286,13 +318,21 @@ void input_analog(AnalogInput *out)
 
 int input_hotkey_held(int hotkey)
 {
-  return action_active(&actions[8 + hotkey]);
+  return action_active(&actions[8 + hotkey])
+#ifdef __EMSCRIPTEN__
+         || (hotkey == HOTKEY_MENU && touch_menu)
+#endif
+         ;
 }
 
 int input_hotkey_pressed(int hotkey)
 {
   Action *a = &actions[8 + hotkey];
-  int now = action_active(a), pressed = now && !a->pressed_latch;
+  int now = action_active(a)
+#ifdef __EMSCRIPTEN__
+            || (hotkey == HOTKEY_MENU && touch_menu)
+#endif
+            , pressed = now && !a->pressed_latch;
   a->pressed_latch = now;
   return pressed;
 }

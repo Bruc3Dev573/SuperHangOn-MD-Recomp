@@ -1,7 +1,8 @@
 # Super Hang-On MD Recomp
 
 A recompilation of **Super Hang-On** for the Sega Mega Drive (Genesis) that
-runs natively on Linux, Windows and macOS (Apple Silicon).
+runs natively on Linux, Windows and macOS (Apple Silicon), and in browsers
+through the WebAssembly build.
 
 ## Why the Mega Drive version and not the arcade one?
 
@@ -31,7 +32,7 @@ So I wanted to give one of my favourite games the treatment it deserves.
 - Settings menu: fullscreen or window, window size, render resolution,
   scaling (integer, fit, stretch), TV or square pixels, vsync, volume
 - Frame rate counter
-- Keyboard and game controller support, remappable in `controls.ini`
+- Keyboard, game controller and browser touch support; controls are remappable in `controls.ini`
 - **Analog steering**: with the left stick the bike leans as far as you push,
   instead of the all-or-nothing of the D-pad (the D-pad and the keys still
   steer fully)
@@ -61,6 +62,21 @@ either: at the first start it is translated from your ROM and kept in
 moment longer. The cache,
 settings, controls, save states and records are stored next to the
 executable, so its folder must be writable.
+
+### Browser build
+
+The `superhangon-wasm.zip` release is the browser version. Extract it and
+serve the directory over HTTP(S), for example:
+
+```sh
+python3 -m http.server 8000
+```
+
+Open `http://localhost:8000/shangon.html`, choose the same 524,288-byte ROM
+in the page, and press **Choose ROM**. The browser stores that ROM, settings,
+controls, save states and records in its own local storage; it is reused on
+later visits. Browser gamepads, keyboard controls and the on-screen touch
+buttons work without installing an app. WebGL2 is required.
 
 ## Controls
 

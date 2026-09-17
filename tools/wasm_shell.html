@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Super Hang-On</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: #101010; color: #eee; font: 15px system-ui, sans-serif; }
+    body { display: flex; flex-direction: column; align-items: center; gap: 0.7rem; padding: 0.7rem; overscroll-behavior: none; }
+    #toolbar, #help { width: min(960px, 100%); }
+    #toolbar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+    #toolbar button { font: inherit; padding: 0.45rem 0.8rem; }
+    #status { flex: 1 1 20rem; min-height: 1.4rem; color: #b8d8ff; }
+    #help { color: #aaa; font-size: 0.9rem; }
+    #game { position: relative; width: min(960px, 100%); }
+    canvas { display: block; width: 100%; height: auto; min-height: 224px; aspect-ratio: 4 / 3; background: #000; image-rendering: pixelated; touch-action: none; }
+    #touch-controls { position: absolute; inset: 0; display: flex; justify-content: space-between; align-items: flex-end; padding: 3% 3%; pointer-events: none; }
+    .touch-cluster { display: flex; align-items: center; gap: 0.45rem; pointer-events: auto; }
+    .touch-dpad { display: grid; grid-template-columns: repeat(3, 3.2rem); grid-template-rows: repeat(3, 3.2rem); gap: 0.18rem; }
+    .touch-dpad [data-touch="0"] { grid-column: 2; grid-row: 1; }
+    .touch-dpad [data-touch="2"] { grid-column: 1; grid-row: 2; }
+    .touch-dpad [data-touch="3"] { grid-column: 3; grid-row: 2; }
+    .touch-dpad [data-touch="1"] { grid-column: 2; grid-row: 3; }
+    .touch-actions { display: grid; grid-template-columns: repeat(2, 3.4rem); grid-template-rows: repeat(2, 3.2rem); gap: 0.25rem; }
+    .touch-button { border: 1px solid #aaa; border-radius: 50%; background: #182235cc; color: #fff; font: 700 1rem system-ui, sans-serif; user-select: none; touch-action: none; -webkit-user-select: none; }
+    .touch-button:active { background: #526d9dcc; }
+    .touch-button[data-touch="4"] { grid-column: 1; grid-row: 1; }
+    .touch-button[data-touch="6"] { grid-column: 2; grid-row: 1; }
+    .touch-button[data-touch="5"] { grid-column: 1; grid-row: 2; }
+    .touch-button[data-touch="7"] { grid-column: 2; grid-row: 2; }
+    #menu-touch { position: absolute; top: 3%; right: 3%; pointer-events: auto; }
+    @media (pointer: fine) {
+      #touch-controls { opacity: 0.28; }
+    }
+    @media (max-width: 520px) {
+      body { padding: 0.35rem; gap: 0.35rem; }
+      #help { font-size: 0.8rem; }
+      .touch-dpad { grid-template-columns: repeat(3, 2.7rem); grid-template-rows: repeat(3, 2.7rem); }
+      .touch-actions { grid-template-columns: repeat(2, 2.8rem); grid-template-rows: repeat(2, 2.7rem); }
+    }
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <button id="choose" type="button">Choose ROM</button>
+    <input id="rom-file" type="file" accept=".md,.bin,application/octet-stream" hidden>
+    <span id="status">Loading browser runtime…</span>
+  </div>
+  <div id="game">
+    <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="0"></canvas>
+    <div id="touch-controls" aria-label="Touch controls">
+      <div class="touch-cluster">
+        <div class="touch-dpad" aria-label="Steering">
+          <button class="touch-button" data-touch="0" type="button" aria-label="Up">▲</button>
+          <button class="touch-button" data-touch="2" type="button" aria-label="Left">◀</button>
+          <button class="touch-button" data-touch="3" type="button" aria-label="Right">▶</button>
+          <button class="touch-button" data-touch="1" type="button" aria-label="Down">▼</button>
+        </div>
+      </div>
+      <div class="touch-cluster">
+        <div class="touch-actions" aria-label="Game buttons">
+          <button class="touch-button" data-touch="4" type="button" aria-label="Accelerate">B</button>
+          <button class="touch-button" data-touch="6" type="button" aria-label="Brake">A</button>
+          <button class="touch-button" data-touch="5" type="button" aria-label="Turbo">C</button>
+          <button class="touch-button" data-touch="7" type="button" aria-label="Start">Start</button>
+        </div>
+      </div>
+      <button id="menu-touch" class="touch-button" data-touch="8" type="button" aria-label="Settings menu">Menu</button>
+    </div>
+  </div>
+  <div id="help">Select the No-Intro <em>Super Hang-On (Japan, USA) (En,Ja)</em> ROM once. It is kept in this browser's local storage. Gamepad, keyboard and touch controls are supported.</div>
+  <script>
+    const statusNode = document.getElementById('status');
+    const chooseButton = document.getElementById('choose');
+    const romFile = document.getElementById('rom-file');
+    const romPath = '/userdata/baserom.md';
+    let storageReady = false;
+    let storageMounted = false;
+    let syncBusy = false;
+    let started = false;
+
+    function status(text, error) {
+      statusNode.textContent = text;
+      statusNode.style.color = error ? '#ff9b9b' : '#b8d8ff';
+    }
+
+    function fsApi() {
+      return typeof FS !== 'undefined' ? FS : Module.FS;
+    }
+
+    function idbfsApi() {
+      return typeof IDBFS !== 'undefined' ? IDBFS : Module.IDBFS;
+    }
+
+    function hasRom() {
+      try { return fsApi().stat(romPath).size > 0; }
+      catch (_) { return false; }
+    }
+
+    function startGame() {
+      if (!storageReady || started) return;
+      if (!hasRom()) {
+        status('Choose a ROM to start.', false);
+        return;
+      }
+      started = true;
+      chooseButton.textContent = 'Choose another ROM';
+      status('Starting…', false);
+      Module.callMain(['--data', '/userdata', '--rom', romPath]);
+    }
+
+    function syncStorage(populate, callback) {
+      if (syncBusy) {
+        setTimeout(function () { syncStorage(populate, callback); }, 50);
+        return;
+      }
+      syncBusy = true;
+      try {
+        fsApi().syncfs(populate, function (error) {
+          syncBusy = false;
+          callback(error);
+        });
+      } catch (error) {
+        syncBusy = false;
+        callback(error);
+      }
+    }
+
+    function mountStorage() {
+      const fs = fsApi();
+      try { fs.mkdir('/userdata'); } catch (_) {}
+      try {
+        fs.mount(idbfsApi(), {}, '/userdata');
+        storageMounted = true;
+      } catch (error) {
+        status('Could not mount browser storage: ' + error, true);
+        return;
+      }
+      syncStorage(true, function (error) {
+        if (error) {
+          status('Browser storage is unavailable. Serve this page over HTTP(S).', true);
+          return;
+        }
+        storageReady = true;
+        if (hasRom()) startGame();
+        else status('Choose your ROM to start.', false);
+      });
+    }
+
+    async function loadRom(file) {
+      if (!file) return;
+      if (file.size !== 524288) {
+        status('This port needs a 524,288-byte No-Intro ROM.', true);
+        return;
+      }
+      status('Saving ROM in browser storage…', false);
+      try {
+        fsApi().writeFile(romPath, new Uint8Array(await file.arrayBuffer()));
+      } catch (error) {
+        status('Could not save the ROM: ' + error, true);
+        return;
+      }
+      syncStorage(false, function (error) {
+        if (error) {
+          status('Could not save browser storage: ' + error, true);
+          return;
+        }
+        if (started) {
+          status('ROM saved. Reload the page to use it.', false);
+          return;
+        }
+        startGame();
+      });
+    }
+
+    function flushStorage() {
+      if (!storageReady || !storageMounted) return;
+      syncStorage(false, function (error) {
+        if (error) status('Could not save browser storage: ' + error, true);
+      });
+    }
+
+    setInterval(flushStorage, 2000);
+    window.addEventListener('pagehide', flushStorage);
+
+    function resumeAudio() {
+      const audio = Module.SDL2 && Module.SDL2.audioContext;
+      if (audio && audio.state !== 'running') {
+        const result = audio.resume();
+        if (result && result.catch) result.catch(function () {});
+      }
+    }
+
+    document.querySelectorAll('[data-touch]').forEach(function (button) {
+      const id = Number(button.dataset.touch);
+      let active = false;
+      function setActive(value) {
+        if (active === value) return;
+        active = value;
+        if (Module._input_touch_set) Module._input_touch_set(id, value ? 1 : 0);
+        if (value) resumeAudio();
+      }
+      button.addEventListener('pointerdown', function (event) {
+        event.preventDefault();
+        button.setPointerCapture(event.pointerId);
+        setActive(true);
+      });
+      button.addEventListener('pointerup', function (event) {
+        event.preventDefault();
+        setActive(false);
+      });
+      button.addEventListener('pointercancel', function () { setActive(false); });
+      button.addEventListener('lostpointercapture', function () { setActive(false); });
+    });
+
+    chooseButton.addEventListener('click', function () {
+      romFile.value = '';
+      romFile.click();
+    });
+    romFile.addEventListener('change', function () { loadRom(romFile.files[0]); });
+
+    var Module = {
+      noInitialRun: true,
+      noExitRuntime: true,
+      canvas: document.getElementById('canvas'),
+      print: function (text) { if (text) status(text, false); },
+      printErr: function (text) { if (text) status(text, true); },
+      onRuntimeInitialized: function () {
+        if (!storageMounted) mountStorage();
+      }
+    };
+  </script>
+  {{{ SCRIPT }}}
+</body>
+</html>
