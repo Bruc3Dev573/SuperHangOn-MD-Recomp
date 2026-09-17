@@ -19,6 +19,10 @@ extern const int rt_block_count;
 /* video frames per 1/60 s (1 or 2): must match the TickShift of the game code */
 extern int rt_rate;
 
+/* changes the rate while the game runs (the game code of the new rate must be
+ * in place): the next frame is the first of a 1/60 s period again */
+void rt_set_rate(int rate);
+
 /* approximate 68000 cycles executed since the last video frame */
 extern uint32_t rt_cycles;
 static inline void rt_charge(uint32_t cycles) { rt_cycles += cycles; }

@@ -598,6 +598,8 @@ int rt_translate_init(const RtCodeSet *set, const uint8_t *image, uint32_t size,
   const uint32_t *rt_code_waits = set->waits;
   int rt_code_map_count = set->block_count, rt_code_wait_count = set->wait_count;
   code_set = set;
+  free(insns);                        /* a set decoded before (the rate changed) */
+  free(blocks);
   uint32_t total = 0;
   for (int i = 0; i < rt_code_map_count; i++)
     total += rt_code_map[i].count;

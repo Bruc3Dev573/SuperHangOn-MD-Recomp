@@ -16,7 +16,8 @@
  *
  * --frames quits after N frames and prints the rate; --input adds scripted
  * presses, lines "first_frame last_frame BUTTONS" (pad: U D L R A B C S;
- * hotkeys: 5 save state, 8 load state, W rewind, M settings menu).
+ * hotkeys: 5 save state, 8 load state, W rewind, M settings menu, F frame
+ * rate 60 / 120, Q reset the game).
  *
  * The recompiled game runs from the reset vector (rt_start); at every video
  * frame the runtime calls on_frame(), which renders the VDP state, presents
@@ -85,11 +86,17 @@ static int audio_rate;
 static Resampler resampler;
 static double audio_step;             /* nominal input frames per output frame */
 static Uint64 start_time;
+#ifdef RT_CODE_SETS_RATES
+static uint8_t *rom_clean;            /* the ROM without the overlays of a rate */
+static char data_path[1024];          /* where the code caches are kept */
+#endif
 
 #define SCRIPT_SAVE 0x100
 #define SCRIPT_LOAD 0x200
 #define SCRIPT_REWIND 0x400
 #define SCRIPT_MENU 0x800
+#define SCRIPT_RATE 0x1000
+#define SCRIPT_RESET 0x2000
 static struct { long first, last; uint16_t mask; } script[256];
 static int script_len;
 
@@ -107,7 +114,7 @@ static void load_script(const char *path)
       m |= *p == 'U' ? 0x01 : *p == 'D' ? 0x02 : *p == 'L' ? 0x04 : *p == 'R' ? 0x08 :
            *p == 'B' ? 0x10 : *p == 'C' ? 0x20 : *p == 'A' ? 0x40 : *p == 'S' ? 0x80 :
            *p == '5' ? SCRIPT_SAVE : *p == '8' ? SCRIPT_LOAD : *p == 'W' ? SCRIPT_REWIND :
-           *p == 'M' ? SCRIPT_MENU : 0;
+           *p == 'M' ? SCRIPT_MENU : *p == 'F' ? SCRIPT_RATE : *p == 'Q' ? SCRIPT_RESET : 0;
     script[script_len].first = a;
     script[script_len].last = b;
     script[script_len++].mask = m;
@@ -195,6 +202,10 @@ static void poll_events(void)
   rewinding = input_hotkey_held(HOTKEY_REWIND) || (scripted & SCRIPT_REWIND);
   if (scripted & ~scripted_prev & SCRIPT_MENU)
     menu_request = 1;
+  if (scripted & ~scripted_prev & SCRIPT_RESET)
+    persist_request_reset();
+  if (scripted & ~scripted_prev & SCRIPT_RATE)
+    settings.frame_rate = settings.frame_rate == 120 ? 60 : 120;   /* scripted runs: change the rate */
   scripted_prev = scripted;
   md.pad_buttons[0] = input_pad() | (scripted & 0xff);
 
@@ -208,6 +219,10 @@ static void poll_events(void)
     show_message(NULL);
 }
 
+#ifdef RT_CODE_SETS_RATES
+static int rate_apply(int rate);
+#endif
+
 static void on_frame_end(M68K *c, uint32_t resume_pc)
 {
   (void)resume_pc;
@@ -215,6 +230,25 @@ static void on_frame_end(M68K *c, uint32_t resume_pc)
   req_save = req_load = 0;
   persist_frame_end(c, save, load, rewinding);
   scene_frame_end();
+#ifdef RT_CODE_SETS_RATES
+  /* FRAME RATE was changed in the settings menu: the game code of the other
+   * rate takes over between two frames, with the machine as it is (the two
+   * builds have the same blocks at the same addresses). Not before the game
+   * has initialised: the boot sums the whole ROM and compares it with the
+   * checksum in its header, and a sum of two different images fails (the
+   * game then shows its red error screen). */
+  int want = settings.frame_rate == 120 ? 2 : 1;
+  if (want != rt_rate && !memcmp(md.ram, "init", 4)) {
+    int previous = rt_rate;
+    if (rate_apply(want) != 0 && rate_apply(previous) != 0) {
+      fprintf(stderr, "shangon: the game code of the frame rate could not be decoded\n");
+      exit(3);
+    }
+    settings.frame_rate = 60 * rt_rate;
+    persist_rate_changed();
+    rt_resume_at(c, resume_pc);                 /* does not return */
+  }
+#endif
 }
 
 static Scene scene;
@@ -378,6 +412,34 @@ static void fps_update(Uint64 frame_start)
     fps.max_emu_ms = 0;
   }
 }
+
+#ifdef RT_CODE_SETS_RATES
+/* Puts the game code of `rate` (60 or 120 logic ticks per second) in place:
+ * the overlay bytes of that build are applied to a clean copy of the ROM and
+ * the code is decoded again (a few thousand instructions, or read from the
+ * rate's cache file). The game state is untouched, so this also works between
+ * two frames of a race. Returns -1 when the code could not be decoded. */
+static int rate_apply(int rate)
+{
+  const RtCodeSet *set = rate == 2 ? &rt_code_set_120hz : &rt_code_set_60hz;
+  memcpy(md.rom, rom_clean, md.rom_size);
+  const RomPatch *patches = set->patches;
+  for (int i = 0; i < *set->patch_count; i++)
+    if (patches[i].addr + patches[i].len <= md.rom_size)
+      memcpy(md.rom + patches[i].addr, patches[i].bytes, patches[i].len);
+  char cache[1100];
+  snprintf(cache, sizeof cache, rate == 2 ? "%sshangon120.cache" : "%sshangon.cache", data_path);
+  if (rt_translate_init(set, md.rom, md.rom_size, cache) != 0)
+    return -1;
+  rt_set_rate(rate);
+  FPS = 60 * rate;
+  menu_rate = rate;
+  apply_vsync();                      /* the automatic choice follows the frame rate */
+  next_frame = 0;                     /* the frame period changed: pace from now */
+  fps.last_frame = 0;
+  return 0;
+}
+#endif
 
 /* the settings menu runs its own loop: the game is paused meanwhile */
 static void run_menu(void)
@@ -616,9 +678,17 @@ int main(int argc, char **argv)
   /* frame rate: 60 or 120 logic ticks and video frames per second */
   int want_rate = (cli_fps ? cli_fps : settings.frame_rate) == 120 ? 2 : 1;
 #if defined(RT_CODE_SETS_RATES)
-  const RtCodeSet *code_set = want_rate == 2 ? &rt_code_set_120hz : &rt_code_set_60hz;
-  rt_rate = want_rate;
+  /* the rate can also be changed while playing (rate_apply): the ROM without
+   * the overlays of either rate is kept to build the other code from */
+  snprintf(data_path, sizeof data_path, "%s", data);
+  rom_clean = malloc(md.rom_size);
+  if (!rom_clean)
+    return fatal("Out of memory.");
+  memcpy(rom_clean, md.rom, md.rom_size);
   menu_rate_choice = 1;
+  if (rate_apply(want_rate) != 0)
+    return fatal("%s: the game code could not be decoded.", rom);
+  settings.frame_rate = 60 * rt_rate;
 #elif defined(RT_CODE_SET_ORIGINAL)
   const RtCodeSet *code_set = &rt_code_set_original;
   (void)want_rate;
@@ -626,6 +696,7 @@ int main(int argc, char **argv)
   rt_rate = SHANGON_FIXED_RATE;
   (void)want_rate;
 #endif
+#ifndef RT_CODE_SETS_RATES
   menu_rate = rt_rate;
   FPS = 60 * rt_rate;
 #ifdef RT_TRANSLATE
@@ -642,6 +713,7 @@ int main(int argc, char **argv)
   snprintf(cache, sizeof cache, rt_rate == 2 ? "%sshangon120.cache" : "%sshangon.cache", data);
   if (rt_translate_init(code_set, md.rom, md.rom_size, cache) != 0)
     return fatal("%s: the game code could not be decoded.", rom);
+#endif
 #endif
 
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {

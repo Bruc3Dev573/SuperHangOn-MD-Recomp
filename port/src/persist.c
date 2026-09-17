@@ -175,6 +175,13 @@ static void ring_clear(void)
     ring_drop_oldest();
 }
 
+void persist_rate_changed(void)
+{
+  /* the recorded frames last half or twice as long as the ones that follow:
+   * rewinding through them would run at the wrong speed */
+  ring_clear();
+}
+
 static uint8_t *boot;                 /* machine state at the end of the first frame */
 static int reset_requested;
 
@@ -210,7 +217,10 @@ static void after_load(M68K *c)
 void persist_frame_end(M68K *c, int save, int load, int rewind)
 {
   static int have_boot;
-  if (!have_boot && boot)
+  /* the state the game is reset to: taken once the game has initialised, not
+   * during the boot (it sums the whole ROM there, and a reset after a change
+   * of frame rate would finish that sum over the other build of the code) */
+  if (!have_boot && boot && game_initialised())
     have_boot = state_save(c, boot, state_size) != 0;
   if (reset_requested) {
     reset_requested = 0;

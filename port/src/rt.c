@@ -184,6 +184,13 @@ active_done:
     rt_frame_end_callback(c, resume_pc);
 }
 
+void rt_set_rate(int rate)
+{
+  rt_rate = rate;
+  frame_no = 0;                       /* the next frame carries the 60 Hz tick */
+  after_vblank = 1;
+}
+
 void rt_resume_at(M68K *c, uint32_t pc)
 {
   (void)c;

@@ -16,7 +16,7 @@ So I wanted to give one of my favourite games the treatment it deserves.
 ## Features
 
 - 60 fps game logic and rendering, or 120 fps (FRAME RATE in the settings
-  menu, applied at the next start)
+  menu, changed while you play, even in the middle of a race)
 - Reduced input lag
 - 16:9 and 21:9 widescreen races
 - CRT filters (scanlines, aperture grille, slot mask, shadow mask) with

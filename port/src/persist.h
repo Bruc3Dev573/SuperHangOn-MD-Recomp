@@ -19,6 +19,10 @@ void persist_frame_end(M68K *c, int save, int load, int rewind);
  * initialised again) */
 void persist_request_reset(void);
 
+/* the frame rate changed: drop the rewind buffer (its frames are of the
+ * other rate) */
+void persist_rate_changed(void);
+
 int persist_slot(void);
 void persist_set_slot(int slot);            /* 0-9 */
 /* last message for the user ("State 3 saved"), cleared when read */

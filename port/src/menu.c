@@ -174,10 +174,7 @@ static const char *value_text(const AppSettings *s, int id, char *buf, size_t n)
     }
     case ID_VSYNC: return vsync[s->vsync];
     case ID_RATE:
-      if (s->frame_rate != 60 * menu_rate) {
-        snprintf(buf, n, "%d FPS (RESTART)", s->frame_rate);
-        return buf;
-      }
+      /* the choice takes effect as soon as the menu is closed */
       return s->frame_rate == 120 ? "120 FPS" : "60 FPS";
     case ID_FPS: return s->show_fps ? "ON" : "OFF";
     case ID_FILTER: return filters[s->video.crt];
