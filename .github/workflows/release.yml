@@ -36,19 +36,12 @@ jobs:
             build/dist/*.zip
 
   macos:
-    strategy:
-      matrix:
-        include:
-          - runner: macos-15
-            arch: arm64
-          - runner: macos-15-intel
-            arch: x86_64
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
       - name: Check architecture
-        run: test "$(uname -m)" = "${{ matrix.arch }}"
+        run: test "$(uname -m)" = "arm64"
 
       - name: Dependencies
         run: brew install cmake pkg-config sdl2 sdl3
@@ -58,7 +51,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: packages-macos-${{ matrix.arch }}
+          name: packages-macos
           path: build/dist/*.zip
 
   release:
@@ -80,4 +73,4 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" build/dist/*.tar.gz build/dist/*.zip \
             --title "Super Hang-On $GITHUB_REF_NAME" \
-            --notes "Linux and Windows builds plus native macOS Apple Silicon and Intel builds. Packages contain no game code and no ROM data: copy your own Super Hang-On (Japan, USA) (En,Ja) ROM next to the executable as baserom.md. At the first start the game code is translated from it."
+            --notes "Linux and Windows builds plus a native macOS Apple Silicon build. Packages contain no game code and no ROM data: copy your own Super Hang-On (Japan, USA) (En,Ja) ROM next to the executable as baserom.md. At the first start the game code is translated from it."

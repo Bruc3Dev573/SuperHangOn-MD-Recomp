@@ -3,7 +3,7 @@
 #
 #   tools/package_macos.sh [--30hz]
 #
-# Produces build/dist/superhangon-macos-ARCH.zip with shangon, a bundled SDL2
+# Produces build/dist/superhangon-macos-arm64.zip with shangon, a bundled SDL2
 # dylib, the licences and the replaceable Nuked-OPN2 source. It contains no
 # game code and no ROM data: the game code is translated from the player's ROM
 # (baserom.md next to shangon) when it starts.
@@ -24,14 +24,11 @@ done
 pkg-config --exists sdl2 || fail "missing SDL2 development files (brew install sdl2)"
 
 arch=$(uname -m)
-case "$arch" in
-  arm64|x86_64) ;;
-  *) fail "unsupported macOS architecture: $arch" ;;
-esac
+[ "$arch" = arm64 ] || fail "macOS package requires an Apple Silicon host (arm64), got $arch"
 jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
-name="superhangon-macos-$arch"
+name="superhangon-macos-arm64"
 stage="build/dist/$name"
-build="build/macos-$arch"
+build="build/macos-arm64"
 rm -rf "$stage" "build/dist/$name.zip"
 mkdir -p "$stage"
 

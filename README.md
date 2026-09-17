@@ -1,7 +1,7 @@
 # Super Hang-On MD Recomp
 
 A recompilation of **Super Hang-On** for the Sega Mega Drive (Genesis) that
-runs natively on Linux, Windows and macOS (Apple Silicon and Intel).
+runs natively on Linux, Windows and macOS (Apple Silicon).
 
 ## Why the Mega Drive version and not the arcade one?
 
@@ -53,7 +53,7 @@ So I wanted to give one of my favourite games the treatment it deserves.
 
 3. Run `shangon` (Linux), `shangon.exe` (Windows) or `./shangon` from Terminal
    (macOS). On Linux SDL2 must be installed (Debian/Ubuntu:
-   `sudo apt install libsdl2-2.0-0`); the Windows, Apple Silicon and Intel macOS releases include it.
+   `sudo apt install libsdl2-2.0-0`); the Windows and macOS releases include it.
 
 The ROM is not included and never will be. The release contains no game code
 either: at the first start it is translated from your ROM and kept in
